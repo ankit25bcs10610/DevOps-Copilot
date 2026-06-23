@@ -32,12 +32,16 @@ export default function App() {
                 code, finds the root cause, and proposes a fix — pausing for your
                 approval before any write action.
               </p>
-              <div className="empty__steps">
-                <span>📋 Plan</span>
-                <span>🔧 Investigate</span>
-                <span>🧠 Diagnose</span>
-                <span>⏸ Approve</span>
-              </div>
+              <ol className="stepper">
+                {["Plan", "Investigate", "Approve", "Diagnose", "Reflect"].map(
+                  (s, i) => (
+                    <li key={s} className="stepper__item">
+                      <span className="stepper__dot">{i + 1}</span>
+                      <span className="stepper__label">{s}</span>
+                    </li>
+                  )
+                )}
+              </ol>
             </div>
           ) : (
             <div className="thread">

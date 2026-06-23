@@ -1,7 +1,4 @@
-import { useEffect, useState } from "react";
-
-import { getConfig } from "../api";
-import type { AppConfig } from "../types";
+import { providerLabel, useConfig } from "../hooks/useConfig";
 
 const PIPELINE = [
   { icon: "📋", label: "Plan", hint: "decompose the request" },
@@ -11,21 +8,8 @@ const PIPELINE = [
   { icon: "🔁", label: "Reflect", hint: "done or loop" },
 ];
 
-const providerLabel = (p: string) =>
-  p === "anthropic" ? "Anthropic" : p === "groq" ? "Groq" : p;
-
 export function Sidebar() {
-  const [cfg, setCfg] = useState<AppConfig | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    getConfig()
-      .then((c) => active && setCfg(c))
-      .catch(() => active && setCfg(null));
-    return () => {
-      active = false;
-    };
-  }, []);
+  const cfg = useConfig();
 
   return (
     <aside className="sidebar">

@@ -39,6 +39,18 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* accessible focus ring for keyboard users */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+button,
+textarea,
+input {
+  font-family: inherit;
+}
+
 /* ---- Page + shell (the contained app window) ---- */
 .page {
   min-height: 100%;
@@ -162,6 +174,11 @@ body {
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-sm);
   padding: 10px 11px;
+  transition: border-color 0.15s, transform 0.15s;
+}
+.server:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
 }
 .server__head {
   display: flex;
@@ -286,6 +303,33 @@ body {
   color: var(--text-faint);
   letter-spacing: 0.02em;
 }
+.header__meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.model-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  font-size: 11.5px;
+  line-height: 1;
+}
+.model-badge__provider {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #fff;
+  font-weight: 600;
+  padding: 6px 10px;
+}
+.model-badge__model {
+  background: var(--panel);
+  color: var(--text-dim);
+  font-family: var(--mono);
+  padding: 6px 10px;
+}
 .status {
   display: flex;
   align-items: center;
@@ -360,20 +404,42 @@ body {
   font-size: 14px;
   line-height: 1.6;
 }
-.empty__steps {
+.stepper {
+  list-style: none;
+  margin: 22px 0 0;
+  padding: 0;
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 0;
   flex-wrap: wrap;
   justify-content: center;
-  margin-top: 14px;
 }
-.empty__steps span {
-  font-size: 12px;
+.stepper__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   color: var(--text-dim);
-  background: var(--panel);
-  border: 1px solid var(--border-soft);
-  padding: 6px 12px;
-  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.stepper__item:not(:last-child)::after {
+  content: "";
+  width: 26px;
+  height: 1px;
+  margin: 0 12px;
+  background: linear-gradient(90deg, var(--accent), transparent);
+}
+.stepper__dot {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid rgba(100, 145, 255, 0.35);
 }
 
 /* ---- Rows + bubbles ---- */
