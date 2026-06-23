@@ -16,6 +16,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app.session import CopilotSession, TurnResult
@@ -34,6 +35,14 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="DevOps Copilot", version="0.1.0", lifespan=lifespan)
+
+# Allow the React dev server (and a configurable prod origin) to call the API.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 class ChatRequest(BaseModel):

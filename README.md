@@ -72,6 +72,18 @@ uv run uvicorn app.api.main:app --reload
 # POST /approve  {"thread_id": "t1", "approved": true}
 ```
 
+### Run the web UI (React)
+
+A React + TypeScript frontend visualizes the agent activity timeline and the
+human-in-the-loop approval gate. See [`frontend/`](frontend/README.md).
+
+```bash
+# backend (terminal 1)
+uv run uvicorn app.api.main:app --reload
+# frontend (terminal 2)
+cd frontend && npm install && npm run dev   # http://localhost:5173
+```
+
 ---
 
 ## What each part demonstrates
