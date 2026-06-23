@@ -35,11 +35,20 @@ export function Message({ turn, onDecision }: Props) {
           />
         )}
 
-        {turn.text && turn.status !== "awaiting_approval" && (
-          <div className="answer">
-            <ReactMarkdown>{turn.text}</ReactMarkdown>
+        {turn.status === "error" && (
+          <div className="inline-error">
+            <span className="inline-error__icon">⚠️</span>
+            <span>{turn.text}</span>
           </div>
         )}
+
+        {turn.text &&
+          turn.status !== "awaiting_approval" &&
+          turn.status !== "error" && (
+            <div className="answer">
+              <ReactMarkdown>{turn.text}</ReactMarkdown>
+            </div>
+          )}
       </div>
     </div>
   );

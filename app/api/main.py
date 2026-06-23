@@ -58,10 +58,21 @@ class ApproveRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     thread_id: str
-    status: str  # "completed" | "awaiting_approval"
+    status: str  # "completed" | "awaiting_approval" | "error"
     answer: str = ""
     approval_request: dict | None = None
     trace: list[str] = []
+
+
+def _friendly_error(exc: Exception) -> str:
+    """Turn a raw exception into a message safe to show in the UI."""
+    text = str(exc)
+    if "rate_limit" in text or "429" in text:
+        return (
+            "The LLM provider's rate limit was reached (Groq free-tier daily "
+            "token cap). Please try again later or upgrade the Groq plan."
+        )
+    return f"Something went wrong while running the agent: {text}"
 
 
 def _to_response(thread_id: str, result: TurnResult) -> ChatResponse:
@@ -92,12 +103,22 @@ async def healthz() -> dict:
 @app.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest) -> ChatResponse:
     session = await _get_session(req.thread_id, create=True)
-    result = await session.ask(req.message)
+    try:
+        result = await session.ask(req.message)
+    except Exception as exc:  # noqa: BLE001 — surface a clean error to the UI
+        return ChatResponse(
+            thread_id=req.thread_id, status="error", answer=_friendly_error(exc)
+        )
     return _to_response(req.thread_id, result)
 
 
 @app.post("/approve", response_model=ChatResponse)
 async def approve(req: ApproveRequest) -> ChatResponse:
     session = await _get_session(req.thread_id, create=False)
-    result = await session.resume(approved=req.approved, reason=req.reason)
+    try:
+        result = await session.resume(approved=req.approved, reason=req.reason)
+    except Exception as exc:  # noqa: BLE001
+        return ChatResponse(
+            thread_id=req.thread_id, status="error", answer=_friendly_error(exc)
+        )
     return _to_response(req.thread_id, result)

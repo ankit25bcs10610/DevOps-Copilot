@@ -26,9 +26,9 @@ export function useCopilot() {
     (assistantId: string, res: ChatResponse) => {
       patch(assistantId, {
         text:
-          res.status === "completed"
-            ? res.answer
-            : res.approval_request?.message ?? "Awaiting approval…",
+          res.status === "awaiting_approval"
+            ? res.approval_request?.message ?? "Awaiting approval…"
+            : res.answer,
         trace: res.trace,
         status: res.status,
         approval: res.approval_request,

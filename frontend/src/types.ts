@@ -1,6 +1,6 @@
 // Mirrors the FastAPI response contract (app/api/main.py).
 
-export type TurnStatus = "completed" | "awaiting_approval";
+export type TurnStatus = "completed" | "awaiting_approval" | "error";
 
 export interface ProposedAction {
   tool: string;
