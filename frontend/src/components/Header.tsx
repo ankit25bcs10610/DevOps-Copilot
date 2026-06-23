@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { health } from "../api";
 import { modelShort, providerLabel, useConfig } from "../hooks/useConfig";
+import { ThemePicker } from "./ThemePicker";
 
 export function Header() {
   const cfg = useConfig();
@@ -47,6 +48,7 @@ export function Header() {
           <span className={dotClass} />
           <span className="status__label">{label}</span>
         </span>
+        <ThemePicker />
       </div>
     </header>
   );

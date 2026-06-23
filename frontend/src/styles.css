@@ -20,6 +20,68 @@
   --radius-sm: 10px;
   --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.7);
+  /* ambient page glows — overridden per theme */
+  --glow-1: rgba(124, 92, 255, 0.14);
+  --glow-2: rgba(100, 145, 255, 0.12);
+}
+
+/* ============ Themes (override the variables above) ============ */
+[data-theme="midnight"] {
+  --bg: #05070d;
+  --shell: #0a0e16;
+  --panel: #111722;
+  --panel-2: #18202d;
+  --border: #1f2a3a;
+  --border-soft: #141c28;
+  --accent: #4d9fff;
+  --accent-2: #2f7fe0;
+  --accent-soft: rgba(77, 159, 255, 0.12);
+  --glow-1: rgba(77, 159, 255, 0.13);
+  --glow-2: rgba(47, 127, 224, 0.10);
+}
+[data-theme="forest"] {
+  --bg: #060d0a;
+  --shell: #0a1410;
+  --panel: #10201a;
+  --panel-2: #16291f;
+  --border: #1f3a2e;
+  --border-soft: #142720;
+  --accent: #34d399;
+  --accent-2: #10b981;
+  --accent-soft: rgba(52, 211, 153, 0.12);
+  --ok: #34d399;
+  --glow-1: rgba(16, 185, 129, 0.15);
+  --glow-2: rgba(52, 211, 153, 0.10);
+}
+[data-theme="sunset"] {
+  --bg: #0e0907;
+  --shell: #160e0a;
+  --panel: #211410;
+  --panel-2: #2c1c14;
+  --border: #3a2820;
+  --border-soft: #271a13;
+  --accent: #ff8a4c;
+  --accent-2: #f0653e;
+  --accent-soft: rgba(255, 138, 76, 0.12);
+  --glow-1: rgba(255, 138, 76, 0.15);
+  --glow-2: rgba(240, 101, 62, 0.10);
+}
+[data-theme="light"] {
+  --bg: #eef1f6;
+  --shell: #ffffff;
+  --panel: #f4f6fa;
+  --panel-2: #e9edf3;
+  --border: #d7dde7;
+  --border-soft: #e6eaf1;
+  --text: #1a2230;
+  --text-dim: #5b6677;
+  --text-faint: #8a94a6;
+  --accent: #3b6fed;
+  --accent-2: #7c5cff;
+  --accent-soft: rgba(59, 111, 237, 0.10);
+  --glow-1: rgba(124, 92, 255, 0.10);
+  --glow-2: rgba(59, 111, 237, 0.10);
+  --shadow: 0 18px 50px -24px rgba(20, 30, 60, 0.22);
 }
 
 * {
@@ -37,6 +99,7 @@ body {
   color: var(--text);
   font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.25s ease, color 0.25s ease;
 }
 
 /* accessible focus ring for keyboard users */
@@ -59,9 +122,10 @@ input {
   justify-content: center;
   align-items: stretch;
   background:
-    radial-gradient(900px 500px at 15% -5%, rgba(124, 92, 255, 0.14), transparent 60%),
-    radial-gradient(900px 500px at 100% 0%, rgba(100, 145, 255, 0.12), transparent 55%),
+    radial-gradient(900px 500px at 15% -5%, var(--glow-1), transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, var(--glow-2), transparent 55%),
     var(--bg);
+  transition: background 0.25s ease;
 }
 
 /* layout = sidebar + chat shell, side by side */
@@ -356,6 +420,120 @@ input {
 }
 .dot--idle {
   background: var(--warn);
+}
+
+/* ---- Theme picker ---- */
+.theme {
+  position: relative;
+}
+.theme-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--panel);
+  border: 1px solid var(--border-soft);
+  color: var(--text-dim);
+  border-radius: 999px;
+  padding: 5px 11px 5px 7px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.theme-btn:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.theme-btn__swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--shell), 0 0 0 3px var(--border);
+}
+.theme-btn__caret {
+  font-size: 9px;
+  opacity: 0.7;
+}
+.theme-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 300px;
+  background: var(--shell);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  padding: 10px;
+  z-index: 50;
+  animation: menu-in 0.14s ease;
+}
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.theme-menu__head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px 10px;
+}
+.theme-menu__head strong {
+  font-size: 14px;
+}
+.theme-menu__head span {
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+.theme-card {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 9px 10px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s, border-color 0.12s;
+}
+.theme-card:hover {
+  background: var(--panel);
+}
+.theme-card--active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.theme-card__swatch {
+  flex: 0 0 38px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.theme-card__text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.theme-card__name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.theme-card__desc {
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+.theme-card__check {
+  margin-left: auto;
+  color: var(--accent);
+  font-weight: 700;
 }
 
 /* ---- Chat body ---- */
