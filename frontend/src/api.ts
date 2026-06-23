@@ -1,6 +1,6 @@
 // Thin, typed client for the DevOps Copilot backend.
 
-import type { ChatResponse } from "./types";
+import type { AppConfig, ChatResponse } from "./types";
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
@@ -33,6 +33,13 @@ export function approve(
     approved,
     reason,
   });
+}
+
+/** Fetch the running agent's provider, models, and MCP server catalog. */
+export async function getConfig(): Promise<AppConfig> {
+  const res = await fetch(`${BASE_URL}/config`);
+  if (!res.ok) throw new Error(`config ${res.status}`);
+  return res.json() as Promise<AppConfig>;
 }
 
 /** Liveness check used by the header status dot. */

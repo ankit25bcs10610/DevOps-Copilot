@@ -52,11 +52,20 @@ body {
     var(--bg);
 }
 
-.shell {
+/* layout = sidebar + chat shell, side by side */
+.layout {
   width: 100%;
-  max-width: 860px;
+  max-width: 1180px;
   height: calc(100vh - 56px);
-  max-height: 940px;
+  max-height: 960px;
+  display: flex;
+  gap: 18px;
+}
+
+.shell {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
   display: flex;
   flex-direction: column;
   background: var(--shell);
@@ -64,6 +73,181 @@ body {
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   overflow: hidden;
+}
+
+/* ---- Sidebar ---- */
+.sidebar {
+  flex: 0 0 268px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 20px 16px;
+  background: var(--shell);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow-y: auto;
+}
+.side-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.side-title {
+  margin: 0;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-faint);
+}
+.side-skel {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+.model-card {
+  background: var(--panel);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.model-card__top {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.provider-pill {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+.offline-pill {
+  background: var(--panel-2);
+  color: var(--text-dim);
+  font-size: 11px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+}
+.model-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.model-row__k {
+  flex: 0 0 32px;
+  color: var(--text-faint);
+}
+.model-row__v {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--text);
+  word-break: break-all;
+}
+
+.servers {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.server {
+  background: var(--panel);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  padding: 10px 11px;
+}
+.server__head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 8px;
+}
+.server__name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+.server__badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ok);
+  background: rgba(45, 212, 167, 0.12);
+  border: 1px solid rgba(45, 212, 167, 0.35);
+  padding: 1.5px 5px;
+  border-radius: 4px;
+}
+.server__tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.tool-chip {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--text-dim);
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
+  padding: 2px 6px;
+  border-radius: 5px;
+}
+
+.pipeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pipeline__step {
+  display: grid;
+  grid-template-columns: 22px auto;
+  grid-template-rows: auto auto;
+  column-gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+}
+.pipeline__step:hover {
+  background: var(--panel);
+}
+.pipeline__icon {
+  grid-row: 1 / 3;
+  align-self: center;
+  font-size: 15px;
+}
+.pipeline__label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+.pipeline__hint {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.side-foot {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-soft);
+  font-size: 11px;
+  color: var(--text-faint);
+  text-align: center;
+}
+.sidebar::-webkit-scrollbar {
+  width: 8px;
+}
+.sidebar::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+  border: 2px solid var(--shell);
 }
 
 /* ---- Header ---- */
@@ -580,13 +764,25 @@ body {
   background: var(--panel-2);
 }
 
+@media (max-width: 900px) {
+  .sidebar {
+    display: none;
+  }
+  .layout {
+    max-width: 860px;
+  }
+}
+
 @media (max-width: 640px) {
   .page {
     padding: 0;
   }
-  .shell {
+  .layout {
     height: 100vh;
     max-height: none;
+    gap: 0;
+  }
+  .shell {
     border: none;
     border-radius: 0;
   }

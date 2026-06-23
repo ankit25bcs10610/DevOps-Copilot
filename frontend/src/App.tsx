@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import { Composer } from "./components/Composer";
 import { Header } from "./components/Header";
 import { Message } from "./components/Message";
+import { Sidebar } from "./components/Sidebar";
 import { useCopilot } from "./hooks/useCopilot";
 
 export default function App() {
@@ -16,7 +17,9 @@ export default function App() {
 
   return (
     <div className="page">
-      <div className="shell">
+      <div className="layout">
+        <Sidebar />
+        <div className="shell">
         <Header />
 
         <main className="chat">
@@ -47,6 +50,7 @@ export default function App() {
         </main>
 
         <Composer disabled={busy} onSend={send} />
+        </div>
       </div>
     </div>
   );

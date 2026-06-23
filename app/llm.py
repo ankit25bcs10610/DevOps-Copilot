@@ -57,6 +57,12 @@ def get_llm(fast: bool = False, model: str | None = None) -> BaseChatModel:
     )
 
 
+def resolved_models() -> tuple[str, str]:
+    """Return the (main, fast) model ids that will actually be used — with
+    provider defaults applied. Construction makes no API call."""
+    return get_llm().model, get_llm(fast=True).model
+
+
 def active_api_key() -> str:
     """The API key required for the configured provider (for startup checks)."""
     settings = get_settings()

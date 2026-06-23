@@ -21,6 +21,21 @@ export interface ChatResponse {
   trace: string[];
 }
 
+export interface McpServer {
+  name: string;
+  label: string;
+  custom?: boolean;
+  tools: string[];
+}
+
+export interface AppConfig {
+  provider: string;
+  model: string;
+  fast_model: string;
+  offline_mode: boolean;
+  servers: McpServer[];
+}
+
 // --- UI-side model ---
 
 export type Role = "user" | "assistant";

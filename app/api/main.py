@@ -19,7 +19,32 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from app.config import get_settings
+from app.llm import resolved_models
 from app.session import CopilotSession, TurnResult
+
+# Static catalog of the MCP servers + their tools, surfaced to the UI sidebar.
+# Mirrors app/mcp/client.py — kept here so /config needs no server subprocesses.
+MCP_CATALOG = [
+    {
+        "name": "logs-metrics",
+        "label": "Logs & Metrics",
+        "custom": True,
+        "tools": ["search_logs", "get_error_summary", "get_metric", "list_services"],
+    },
+    {
+        "name": "repo",
+        "label": "Repository",
+        "custom": True,
+        "tools": ["list_dir", "read_file", "grep", "git_log"],
+    },
+    {
+        "name": "github",
+        "label": "GitHub",
+        "custom": True,
+        "tools": ["list_recent_commits", "get_commit_diff", "create_pull_request"],
+    },
+]
 
 # thread_id -> live session
 _SESSIONS: dict[str, CopilotSession] = {}
@@ -103,6 +128,20 @@ async def _get_session(thread_id: str, create: bool) -> CopilotSession:
 @app.get("/healthz")
 async def healthz() -> dict:
     return {"status": "ok", "active_sessions": len(_SESSIONS)}
+
+
+@app.get("/config")
+async def config() -> dict:
+    """Describe the running agent (provider, models, MCP servers) for the UI."""
+    settings = get_settings()
+    main_model, fast_model = resolved_models()
+    return {
+        "provider": settings.copilot_provider,
+        "model": main_model,
+        "fast_model": fast_model,
+        "offline_mode": settings.offline_mode,
+        "servers": MCP_CATALOG,
+    }
 
 
 @app.post("/chat", response_model=ChatResponse)
