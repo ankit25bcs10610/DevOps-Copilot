@@ -22,9 +22,9 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # --- LLM ---
-    anthropic_api_key: str = ""
-    copilot_model: str = "claude-sonnet-4-6"
+    # --- LLM (Groq) ---
+    groq_api_key: str = ""
+    copilot_model: str = "llama-3.3-70b-versatile"
 
     # --- MCP servers ---
     target_repo_path: str = "./sample_repo"

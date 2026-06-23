@@ -53,8 +53,8 @@ async def _handle(session: CopilotSession, result: TurnResult) -> None:
 
 async def _run(question: str | None) -> None:
     settings = get_settings()
-    if not settings.anthropic_api_key:
-        console.print("[red]ANTHROPIC_API_KEY is not set. Copy .env.example to .env first.[/red]")
+    if not settings.groq_api_key:
+        console.print("[red]GROQ_API_KEY is not set. Copy .env.example to .env first.[/red]")
         sys.exit(1)
 
     async with CopilotSession(thread_id="cli") as session:

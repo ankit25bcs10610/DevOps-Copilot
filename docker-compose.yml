@@ -11,8 +11,8 @@ services:
     ports:
       - "8000:8000"
     environment:
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?set ANTHROPIC_API_KEY}
-      COPILOT_MODEL: ${COPILOT_MODEL:-claude-sonnet-4-6}
+      GROQ_API_KEY: ${GROQ_API_KEY:?set GROQ_API_KEY}
+      COPILOT_MODEL: ${COPILOT_MODEL:-llama-3.3-70b-versatile}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       TARGET_REPO_PATH: ./sample_repo
       LOGS_DATA_PATH: ./app/mcp/servers/logs_metrics/sample_data
