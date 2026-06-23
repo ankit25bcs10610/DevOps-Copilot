@@ -35,6 +35,15 @@ DATA_DIR = Path(
 mcp = FastMCP("logs-metrics")
 
 
+def _as_int(value, default: int) -> int:
+    """Coerce a tool argument to int. LLMs (esp. Llama) often send numbers as
+    strings; we accept either rather than failing schema validation."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def _read_log_lines() -> list[str]:
     log_file = DATA_DIR / "app.log"
     if not log_file.exists():
@@ -59,7 +68,7 @@ def search_logs(
     service: str | None = None,
     level: str | None = None,
     contains: str | None = None,
-    limit: int = 50,
+    limit: int | str = 50,
 ) -> list[str]:
     """Search application logs.
 
@@ -69,6 +78,7 @@ def search_logs(
         contains: only return lines containing this substring.
         limit: maximum number of matching lines to return.
     """
+    limit = _as_int(limit, 50)
     results: list[str] = []
     for line in _read_log_lines():
         if service and service not in line:

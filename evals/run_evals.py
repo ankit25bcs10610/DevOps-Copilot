@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+import uuid
 from pathlib import Path
 
 import yaml
@@ -40,7 +41,10 @@ def _tools_used(trace: list[str]) -> set[str]:
 async def _run_case(case: dict) -> dict:
     start = time.perf_counter()
     full_trace: list[str] = []
-    async with CopilotSession(thread_id=f"eval-{case['name']}") as session:
+    # Unique thread id per run so a persistent checkpointer never resumes stale
+    # state from a previous (or crashed) eval run.
+    thread_id = f"eval-{case['name']}-{uuid.uuid4().hex[:8]}"
+    async with CopilotSession(thread_id=thread_id) as session:
         result = await session.ask(case["question"])
         full_trace += result.trace
         # Auto-approve any pending write so evals are non-interactive.

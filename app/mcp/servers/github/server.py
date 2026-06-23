@@ -25,6 +25,14 @@ OFFLINE = not GITHUB_TOKEN
 mcp = FastMCP("github")
 
 
+def _as_int(value, default: int) -> int:
+    """Coerce a tool argument to int; LLMs often send numbers as strings."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 # --- Offline fixtures (used when no token is configured) -------------------
 _DEMO_COMMITS = [
     {
@@ -63,8 +71,9 @@ index 8a1f..b2c3 100644
 
 
 @mcp.tool()
-def list_recent_commits(branch: str = "main", max_count: int = 5) -> list[dict]:
+def list_recent_commits(branch: str = "main", max_count: int | str = 5) -> list[dict]:
     """List recent commits on a branch (sha, author, date, message)."""
+    max_count = _as_int(max_count, 5)
     if OFFLINE:
         return _DEMO_COMMITS[:max_count]
     # Real-API path (kept minimal; wired the same way as offline shape).

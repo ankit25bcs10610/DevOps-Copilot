@@ -24,7 +24,10 @@ class Settings(BaseSettings):
 
     # --- LLM (Groq) ---
     groq_api_key: str = ""
+    # Main reasoning/tool-calling model.
     copilot_model: str = "llama-3.3-70b-versatile"
+    # Cheaper, faster model for lightweight nodes (plan, reflect) to save tokens.
+    copilot_fast_model: str = "llama-3.1-8b-instant"
 
     # --- MCP servers ---
     target_repo_path: str = "./sample_repo"

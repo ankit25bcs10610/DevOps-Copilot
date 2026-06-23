@@ -24,8 +24,11 @@ def _last_user_text(state: AgentState) -> str:
 
 
 def make_plan_node():
-    """Node: turn the request into a short investigation plan."""
-    llm = get_llm()
+    """Node: turn the request into a short investigation plan.
+
+    Uses the cheap fast model — planning is lightweight and doesn't need tools.
+    """
+    llm = get_llm(model=get_settings().copilot_fast_model)
 
     def plan_node(state: AgentState) -> dict:
         request = _last_user_text(state)
@@ -93,8 +96,13 @@ def approval_node(state: AgentState) -> dict:
 
 
 def make_reflect_node():
-    """Node: decide whether to finish or keep investigating."""
-    llm = get_llm()
+    """Node: decide whether to finish or keep investigating.
+
+    Token-efficient: runs on the cheap fast model and judges only the agent's
+    latest answer (plus the original request) instead of re-sending the full
+    transcript with its large tool outputs.
+    """
+    llm = get_llm(model=get_settings().copilot_fast_model)
     settings = get_settings()
 
     def reflect_node(state: AgentState) -> dict:
@@ -102,11 +110,21 @@ def make_reflect_node():
         if iteration >= settings.copilot_max_iterations:
             return {"iteration": iteration, "status": "done"}
 
+        request = _last_user_text(state)
+        latest_answer = ""
+        for msg in reversed(state["messages"]):
+            if isinstance(msg, AIMessage) and not msg.tool_calls:
+                latest_answer = str(msg.content)
+                break
+
         resp = llm.invoke(
             [
                 SystemMessage(content=REFLECT_SYSTEM),
-                *state["messages"],
-                HumanMessage(content="Is the investigation complete? Answer DONE or CONTINUE."),
+                HumanMessage(
+                    content=f"Original request:\n{request}\n\n"
+                    f"Agent's latest answer:\n{latest_answer}\n\n"
+                    "Is the investigation complete? Answer DONE or CONTINUE."
+                ),
             ]
         )
         verdict = str(resp.content).strip().upper()
