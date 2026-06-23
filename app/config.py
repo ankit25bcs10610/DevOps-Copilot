@@ -22,12 +22,15 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # --- LLM (Groq) ---
+    # --- LLM ---
+    # Which provider backs the agent: "anthropic" (Claude) or "groq" (Llama).
+    copilot_provider: str = "anthropic"
+    anthropic_api_key: str = ""
     groq_api_key: str = ""
-    # Main reasoning/tool-calling model.
-    copilot_model: str = "llama-3.3-70b-versatile"
-    # Cheaper, faster model for lightweight nodes (plan, reflect) to save tokens.
-    copilot_fast_model: str = "llama-3.1-8b-instant"
+    # Optional model overrides. Leave blank to use the provider's defaults
+    # (see app/llm.py: Opus 4.8 + Haiku 4.5 for Anthropic, Llama 3.3/3.1 for Groq).
+    copilot_model: str = ""       # main reasoning / tool-calling model
+    copilot_fast_model: str = ""  # cheaper model for lightweight nodes (plan, reflect)
 
     # --- MCP servers ---
     target_repo_path: str = "./sample_repo"

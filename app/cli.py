@@ -17,6 +17,7 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 
 from app.config import get_settings
+from app.llm import active_api_key
 from app.session import CopilotSession, TurnResult
 
 console = Console()
@@ -53,8 +54,12 @@ async def _handle(session: CopilotSession, result: TurnResult) -> None:
 
 async def _run(question: str | None) -> None:
     settings = get_settings()
-    if not settings.groq_api_key:
-        console.print("[red]GROQ_API_KEY is not set. Copy .env.example to .env first.[/red]")
+    if not active_api_key():
+        key = "ANTHROPIC_API_KEY" if settings.copilot_provider == "anthropic" else "GROQ_API_KEY"
+        console.print(
+            f"[red]{key} is not set (COPILOT_PROVIDER={settings.copilot_provider}). "
+            "Copy .env.example to .env and add your key.[/red]"
+        )
         sys.exit(1)
 
     async with CopilotSession(thread_id="cli") as session:

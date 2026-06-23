@@ -28,7 +28,7 @@ def make_plan_node():
 
     Uses the cheap fast model — planning is lightweight and doesn't need tools.
     """
-    llm = get_llm(model=get_settings().copilot_fast_model)
+    llm = get_llm(fast=True)
 
     def plan_node(state: AgentState) -> dict:
         request = _last_user_text(state)
@@ -102,7 +102,7 @@ def make_reflect_node():
     latest answer (plus the original request) instead of re-sending the full
     transcript with its large tool outputs.
     """
-    llm = get_llm(model=get_settings().copilot_fast_model)
+    llm = get_llm(fast=True)
     settings = get_settings()
 
     def reflect_node(state: AgentState) -> dict:

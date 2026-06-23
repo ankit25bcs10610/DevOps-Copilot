@@ -8,7 +8,7 @@ they're meant to:
 |------------|------|
 | **MCP** (Model Context Protocol) | The **tool layer** — three independent MCP servers (logs/metrics, repo, GitHub) the agent discovers at runtime. One is fully custom. |
 | **LangGraph** | The **orchestration brain** — a stateful graph (`plan → reason/act → approve → reflect`) with cycles, checkpointing, and human-in-the-loop. |
-| **LangChain** | The **building blocks** — Groq (Llama 3.3) model wrappers, prompts, and the MCP→LangChain tool adapter. |
+| **LangChain** | The **building blocks** — Claude Opus 4.8 (or Groq/Llama) model wrappers, prompts, and the MCP→LangChain tool adapter. |
 
 > Give it a question like *"Why is the checkout API throwing 500s?"* and it
 > pulls logs, reads the code, inspects git history, finds the root cause, and
@@ -52,9 +52,10 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full design.
 # 1. Install (uv recommended)
 uv venv && uv pip install -e .
 
-# 2. Configure — works fully offline; only a Groq key is required
+# 2. Configure — works fully offline (no GitHub needed). Pick an LLM provider:
 cp .env.example .env
-#   set GROQ_API_KEY=...   (GitHub token optional -> offline demo mode)
+#   anthropic (default): set ANTHROPIC_API_KEY=...   (Claude Opus 4.8)
+#   or COPILOT_PROVIDER=groq + GROQ_API_KEY=...      (Llama 3.3)
 
 # 3. Ask it something
 uv run copilot "Why is the checkout API throwing 500 errors?"
@@ -117,7 +118,8 @@ docs/         architecture write-up
 
 ## Tech stack
 
-Groq / Llama 3.3 (`langchain-groq`) · LangGraph + SQLite checkpointer ·
+Claude Opus 4.8 (`langchain-anthropic`) or Groq/Llama (`langchain-groq`),
+provider-switchable · LangGraph + SQLite checkpointer ·
 `mcp` SDK + `langchain-mcp-adapters` · FastAPI · Rich CLI · Docker
 
 ---

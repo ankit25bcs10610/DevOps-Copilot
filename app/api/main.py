@@ -69,8 +69,13 @@ def _friendly_error(exc: Exception) -> str:
     text = str(exc)
     if "rate_limit" in text or "429" in text:
         return (
-            "The LLM provider's rate limit was reached (Groq free-tier daily "
-            "token cap). Please try again later or upgrade the Groq plan."
+            "The LLM provider's rate limit was reached. Please try again later "
+            "or check your plan/quota."
+        )
+    if "authentication" in text.lower() or "401" in text or "api_key" in text.lower():
+        return (
+            "The LLM provider rejected the API key. Check the key for the "
+            "configured COPILOT_PROVIDER in your .env."
         )
     return f"Something went wrong while running the agent: {text}"
 
