@@ -1,0 +1,25 @@
+# DevOps Copilot — single-service compose for the demo.
+#
+# The MCP servers run as stdio subprocesses inside the same container (launched
+# by the agent), so no extra services are required for the offline demo. A real
+# deployment would split out Postgres for the checkpointer and run remote MCP
+# servers over HTTP — both are drop-in via app/config.py and app/mcp/client.py.
+
+services:
+  copilot:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?set ANTHROPIC_API_KEY}
+      COPILOT_MODEL: ${COPILOT_MODEL:-claude-sonnet-4-6}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      TARGET_REPO_PATH: ./sample_repo
+      LOGS_DATA_PATH: ./app/mcp/servers/logs_metrics/sample_data
+      COPILOT_CHECKPOINT_DB: /data/copilot_checkpoints.sqlite
+    volumes:
+      - copilot_state:/data
+    restart: unless-stopped
+
+volumes:
+  copilot_state:

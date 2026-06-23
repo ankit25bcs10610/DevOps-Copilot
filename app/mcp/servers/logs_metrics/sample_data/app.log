@@ -1,0 +1,10 @@
+2026-06-23T09:58:01Z INFO  checkout-svc  request_id=a1 path=/api/checkout method=POST status=200 latency_ms=142
+2026-06-23T09:59:11Z INFO  checkout-svc  request_id=a2 path=/api/checkout method=POST status=200 latency_ms=131
+2026-06-23T10:00:02Z INFO  checkout-svc  request_id=b1 path=/api/checkout method=POST status=200 latency_ms=150
+2026-06-23T10:01:15Z ERROR checkout-svc  request_id=b2 path=/api/checkout method=POST status=500 latency_ms=88 error="TypeError: Cannot read properties of undefined (reading 'total') at applyDiscount (checkout.js:42)"
+2026-06-23T10:01:48Z ERROR checkout-svc  request_id=b3 path=/api/checkout method=POST status=500 latency_ms=91 error="TypeError: Cannot read properties of undefined (reading 'total') at applyDiscount (checkout.js:42)"
+2026-06-23T10:02:20Z ERROR checkout-svc  request_id=b4 path=/api/checkout method=POST status=500 latency_ms=85 error="TypeError: Cannot read properties of undefined (reading 'total') at applyDiscount (checkout.js:42)"
+2026-06-23T10:03:05Z INFO  inventory-svc request_id=c1 path=/api/stock method=GET status=200 latency_ms=44
+2026-06-23T10:03:40Z WARN  checkout-svc  request_id=b5 path=/api/checkout method=POST status=500 latency_ms=90 error="TypeError: Cannot read properties of undefined (reading 'total') at applyDiscount (checkout.js:42)"
+2026-06-23T10:04:12Z INFO  inventory-svc request_id=c2 path=/api/stock method=GET status=200 latency_ms=39
+2026-06-23T10:05:33Z ERROR checkout-svc  request_id=b6 path=/api/checkout method=POST status=500 latency_ms=87 error="TypeError: Cannot read properties of undefined (reading 'total') at applyDiscount (checkout.js:42)"

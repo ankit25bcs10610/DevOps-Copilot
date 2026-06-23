@@ -1,0 +1,21 @@
+# Eval cases for DevOps Copilot.
+# Each case sends a question and checks the final answer contains expected
+# signals (root-cause keywords) and that the agent used the right tools.
+
+- name: checkout_500_root_cause
+  question: "Why is the checkout API throwing 500 errors?"
+  expect_keywords: ["applyDiscount", "undefined", "coupon", "checkout.js"]
+  expect_tools_any: ["get_error_summary", "search_logs"]
+  expect_tools_any_2: ["read_file", "grep", "get_commit_diff"]
+
+- name: error_rate_trend
+  question: "Is the checkout service error rate going up or down?"
+  expect_keywords: ["rising", "error"]
+  expect_tools_any: ["get_metric"]
+  expect_tools_any_2: ["get_metric"]
+
+- name: which_services
+  question: "Which services are emitting logs right now?"
+  expect_keywords: ["checkout-svc", "inventory-svc"]
+  expect_tools_any: ["list_services", "search_logs"]
+  expect_tools_any_2: ["list_services", "search_logs"]
