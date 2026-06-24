@@ -261,7 +261,8 @@ async def model_configure(req: ModelConfigRequest) -> dict:
 
     runtime.set_model(provider, req.api_key, req.model, req.fast_model)
     if not active_api_key():
-        runtime.reset()  # don't leave a keyless provider configured
+        # Revert ONLY the model fields — keep github/source overrides intact.
+        runtime.reset_model()
         raise HTTPException(400, f"An API key is required for '{provider}'.")
 
     await _evict_all()  # rebuild sessions so the new model/key is used

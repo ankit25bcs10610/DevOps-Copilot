@@ -1,42 +1,35 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
-import { githubConnect, githubDisconnect, githubStatus } from "../api";
-import { refreshConfig } from "../hooks/useConfig";
-import type { GithubStatus } from "../types";
+import { githubConnect, githubDisconnect } from "../api";
+import { refreshConfig, useConfig } from "../hooks/useConfig";
 
-/** Connect-GitHub control rendered inside the sidebar's GitHub server card.
- *  Lets the user point the GitHub MCP server at a real repo (validated by the
- *  backend) instead of the offline demo fixtures. */
+/** Connect-GitHub control inside the sidebar's GitHub card. The shared config
+ *  store (cfg.github) is the single source of truth, so a Reset elsewhere or a
+ *  refetch keeps this card in sync. */
 export function GithubConnect() {
-  const [status, setStatus] = useState<GithubStatus | null>(null);
+  const { config } = useConfig();
+  const gh = config?.github;
+  const connected = !!gh?.connected;
+
   const [open, setOpen] = useState(false);
   const [token, setToken] = useState("");
   const [repo, setRepo] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let active = true;
-    githubStatus()
-      .then((s) => active && setStatus(s))
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const connected = !!status?.connected;
-  const canSubmit = token.trim().length > 0 && repo.includes("/") && !busy;
+  const [owner, name] = repo.trim().split("/");
+  const repoOk = !!owner && !!name;
+  const canSubmit = token.trim().length > 0 && repoOk && !busy;
 
   const connect = async () => {
     setError(null);
     setBusy(true);
     try {
-      const s = await githubConnect(token.trim(), repo.trim());
-      setStatus(s);
+      await githubConnect(token.trim(), repo.trim());
+      await refreshConfig(); // store drives the pill + this card
       setOpen(false);
       setToken("");
-      refreshConfig(); // clear the "offline demo" pill across the sidebar
+      setRepo("");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -45,10 +38,13 @@ export function GithubConnect() {
   };
 
   const disconnect = async () => {
+    setError(null);
     setBusy(true);
     try {
-      setStatus(await githubDisconnect());
-      refreshConfig();
+      await githubDisconnect();
+      await refreshConfig();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -58,8 +54,8 @@ export function GithubConnect() {
     <div className="gh">
       <div className="gh__status">
         <span className={`gh__dot ${connected ? "gh__dot--live" : "gh__dot--off"}`} />
-        <span className="gh__label" title={status?.full_name ?? undefined}>
-          {connected ? status?.full_name ?? status?.repo : "Offline demo"}
+        <span className="gh__label" title={gh?.repo ?? undefined}>
+          {connected ? gh?.repo : "Offline demo"}
         </span>
         {connected ? (
           <button className="gh__link" onClick={disconnect} disabled={busy}>
@@ -100,6 +96,11 @@ export function GithubConnect() {
             {busy ? "Connecting…" : "Connect repo"}
           </button>
           <p className="gh__note">Validated against GitHub · stored in memory only.</p>
+        </div>
+      )}
+      {error && !open && (
+        <div className="gh__error" role="alert">
+          {error}
         </div>
       )}
     </div>

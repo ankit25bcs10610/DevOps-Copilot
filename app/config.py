@@ -58,7 +58,10 @@ class Settings(BaseSettings):
     @field_validator("copilot_provider")
     @classmethod
     def _normalize_provider(cls, v: str) -> str:
-        return v.strip().lower()
+        v = (v or "").strip().lower()
+        if v not in {"anthropic", "groq"}:
+            raise ValueError("COPILOT_PROVIDER must be 'anthropic' or 'groq'")
+        return v
 
     @property
     def allowed_origins(self) -> list[str]:

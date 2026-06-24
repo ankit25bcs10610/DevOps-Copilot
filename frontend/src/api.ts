@@ -70,8 +70,10 @@ export function resetConfig(): Promise<unknown> {
 }
 
 /** Current GitHub connection state. */
-export function githubStatus(): Promise<GithubStatus> {
-  return fetch(`${BASE_URL}/github/status`).then((r) => r.json());
+export async function githubStatus(): Promise<GithubStatus> {
+  const res = await fetch(`${BASE_URL}/github/status`);
+  if (!res.ok) throw new Error(`github status ${res.status}`);
+  return res.json() as Promise<GithubStatus>;
 }
 
 /** Connect a GitHub repo (validated server-side against the real API). */

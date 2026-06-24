@@ -12,16 +12,20 @@ const subs = new Set<() => void>();
 
 const emit = () => subs.forEach((f) => f());
 
-/** Force a refetch and notify all subscribers (call after a config change). */
+/** Force a refetch and notify all subscribers (call after a config change).
+ *  Re-throws on failure so the caller can surface it instead of silently
+ *  keeping the stale config. */
 export async function refreshConfig(): Promise<AppConfig | null> {
   try {
     _config = await getConfig();
     _failed = false;
-  } catch {
+    emit();
+    return _config;
+  } catch (e) {
     _failed = true;
+    emit();
+    throw e;
   }
-  emit();
-  return _config;
 }
 
 function ensureStarted() {

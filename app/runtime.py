@@ -57,10 +57,12 @@ def fast_model_override() -> str:
 def set_model(provider: str, api_key: str, model: str = "", fast_model: str = "") -> None:
     prov = (provider or "").strip().lower()
     _ov["provider"] = prov
-    if prov == "anthropic" and api_key:
-        _ov["anthropic_key"] = api_key.strip()
-    elif prov == "groq" and api_key:
-        _ov["groq_key"] = api_key.strip()
+    # Always write the chosen provider's key — an empty value clears the override
+    # and re-enables the .env fallback (so the UI can revert to the env key).
+    if prov == "anthropic":
+        _ov["anthropic_key"] = (api_key or "").strip()
+    elif prov == "groq":
+        _ov["groq_key"] = (api_key or "").strip()
     _ov["model"] = (model or "").strip()
     _ov["fast_model"] = (fast_model or "").strip()
 
@@ -103,6 +105,12 @@ def set_repo_path(path: str) -> None:
 
 def set_logs_path(path: str) -> None:
     _ov["logs_path"] = (path or "").strip()
+
+
+def reset_model() -> None:
+    """Revert only the model/provider overrides (leave github + sources intact)."""
+    for k in ("provider", "anthropic_key", "groq_key", "model", "fast_model"):
+        _ov[k] = ""
 
 
 def reset() -> None:
