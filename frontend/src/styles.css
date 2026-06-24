@@ -144,6 +144,20 @@ input {
     radial-gradient(60% 50% at 50% 45%, rgba(124, 92, 255, 0.35), transparent 70%),
     radial-gradient(40% 40% at 60% 60%, rgba(0, 212, 255, 0.25), transparent 70%), #050816;
 }
+/* Sits above the 3D canvas, below all content — mutes the glow so text on every
+   section stays readable while the 3D still shines through. */
+.scene-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(5, 8, 22, 0.66) 0%,
+    rgba(5, 8, 22, 0.52) 45%,
+    rgba(5, 8, 22, 0.62) 100%
+  );
+}
 
 /* ---- App-wide ambient backdrop (behind every view) ---- */
 .ambient {

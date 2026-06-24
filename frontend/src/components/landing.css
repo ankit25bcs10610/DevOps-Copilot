@@ -6,7 +6,7 @@
   --cyan: #00d4ff;
   --mint: #00ffb3;
   --line: rgba(124, 92, 255, 0.16);
-  --glass: rgba(15, 23, 46, 0.55);
+  --glass: rgba(9, 15, 32, 0.82);
   --txt: #e8edff;
   --dim: #8ea0c8;
   --faint: #5d6c91;
@@ -101,7 +101,8 @@
 }
 .btn3d--ghost {
   color: var(--txt);
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(9, 15, 32, 0.62);
+  backdrop-filter: blur(10px);
   border: 1px solid var(--line);
 }
 .btn3d--ghost:hover {
@@ -260,13 +261,18 @@
   font-size: clamp(26px, 4vw, 40px);
   font-weight: 700;
   letter-spacing: -0.01em;
+  text-shadow: 0 2px 22px rgba(5, 8, 22, 0.92);
 }
 .section-sub {
   margin: 12px auto 0;
   max-width: 560px;
-  color: var(--dim);
+  color: #c3d0ee;
   font-size: 15px;
   line-height: 1.55;
+  text-shadow: 0 2px 14px rgba(5, 8, 22, 0.92);
+}
+.section-eyebrow {
+  text-shadow: 0 1px 10px rgba(5, 8, 22, 0.9);
 }
 
 .bento-wrap,
@@ -648,8 +654,9 @@
 }
 .stack__chip {
   font-size: 13px;
-  color: var(--dim);
-  background: rgba(255, 255, 255, 0.03);
+  color: var(--txt);
+  background: rgba(9, 15, 32, 0.7);
+  backdrop-filter: blur(10px);
   border: 1px solid var(--line);
   padding: 9px 16px;
   border-radius: 999px;
@@ -668,7 +675,8 @@
   flex-wrap: wrap;
   gap: 10px;
   font-size: 12.5px;
-  color: var(--faint);
+  color: var(--dim);
+  text-shadow: 0 1px 10px rgba(5, 8, 22, 0.9);
   max-width: 1120px;
   margin: 0 auto;
 }

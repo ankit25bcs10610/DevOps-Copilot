@@ -70,6 +70,8 @@ export default function App() {
     <>
       {/* One persistent 3D command-center backdrop behind every view. */}
       <Hero3D />
+      {/* Dimming veil so the bright 3D never washes out content on any section. */}
+      <div className="scene-veil" aria-hidden="true" />
       {view === "landing" ? (
         <Landing onLaunch={() => setView("console")} />
       ) : (
