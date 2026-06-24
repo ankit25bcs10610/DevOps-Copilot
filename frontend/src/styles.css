@@ -541,6 +541,25 @@ input {
   align-items: center;
   gap: 13px;
 }
+.brand__home {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--panel);
+  border: 1px solid var(--border-soft);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.brand__home:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+.brand__home-icon {
+  transform: rotate(90deg);
+}
 .brand__logo {
   width: 40px;
   height: 40px;

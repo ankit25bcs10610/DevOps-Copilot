@@ -5,7 +5,7 @@ import { modelShort, providerLabel, useConfig } from "../hooks/useConfig";
 import { Icon } from "./Icon";
 import { ThemePicker } from "./ThemePicker";
 
-export function Header() {
+export function Header({ onHome }: { onHome?: () => void }) {
   const { config: cfg } = useConfig();
   const [online, setOnline] = useState<boolean | null>(null);
 
@@ -31,6 +31,11 @@ export function Header() {
   return (
     <header className="header">
       <div className="brand">
+        {onHome && (
+          <button className="brand__home" onClick={onHome} aria-label="Back to home" title="Home">
+            <Icon name="chevron" size={16} className="brand__home-icon" />
+          </button>
+        )}
         <span className="brand__logo">
           <Icon name="tool" size={20} />
         </span>

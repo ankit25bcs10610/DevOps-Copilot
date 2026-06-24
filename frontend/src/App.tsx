@@ -1,13 +1,14 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Composer } from "./components/Composer";
 import { Header } from "./components/Header";
 import { Icon } from "./components/Icon";
+import { Landing } from "./components/Landing";
 import { Message } from "./components/Message";
 import { Sidebar } from "./components/Sidebar";
 import { useCopilot } from "./hooks/useCopilot";
 
-export default function App() {
+function Console({ onHome }: { onHome: () => void }) {
   const { turns, busy, awaitingApproval, send, respond } = useCopilot();
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -23,44 +24,50 @@ export default function App() {
       <div className="layout">
         <Sidebar />
         <div className="shell">
-        <Header />
+          <Header onHome={onHome} />
 
-        <main className="chat">
-          {turns.length === 0 ? (
-            <div className="empty">
-              <div className="empty__icon">
-                <Icon name="tool" size={28} />
-              </div>
-              <h2 className="empty__title">Investigate a production incident</h2>
-              <p className="empty__text">
-                Ask a question and the agent pulls logs &amp; metrics, reads the
-                code, finds the root cause, and proposes a fix — pausing for your
-                approval before any write action.
-              </p>
-              <ol className="stepper">
-                {["Plan", "Investigate", "Approve", "Diagnose", "Reflect"].map(
-                  (s, i) => (
+          <main className="chat">
+            {turns.length === 0 ? (
+              <div className="empty">
+                <div className="empty__icon">
+                  <Icon name="tool" size={28} />
+                </div>
+                <h2 className="empty__title">Investigate a production incident</h2>
+                <p className="empty__text">
+                  Ask a question and the agent pulls logs &amp; metrics, reads the code, finds the
+                  root cause, and proposes a fix — pausing for your approval before any write action.
+                </p>
+                <ol className="stepper">
+                  {["Plan", "Investigate", "Approve", "Diagnose", "Reflect"].map((s, i) => (
                     <li key={s} className="stepper__item">
                       <span className="stepper__dot">{i + 1}</span>
                       <span className="stepper__label">{s}</span>
                     </li>
-                  )
-                )}
-              </ol>
-            </div>
-          ) : (
-            <div className="thread">
-              {turns.map((turn) => (
-                <Message key={turn.id} turn={turn} onDecision={respond} />
-              ))}
-              <div ref={endRef} />
-            </div>
-          )}
-        </main>
+                  ))}
+                </ol>
+              </div>
+            ) : (
+              <div className="thread">
+                {turns.map((turn) => (
+                  <Message key={turn.id} turn={turn} onDecision={respond} />
+                ))}
+                <div ref={endRef} />
+              </div>
+            )}
+          </main>
 
-        <Composer disabled={busy || awaitingApproval} onSend={send} />
+          <Composer disabled={busy || awaitingApproval} onSend={send} />
         </div>
       </div>
     </div>
+  );
+}
+
+export default function App() {
+  const [view, setView] = useState<"landing" | "console">("landing");
+  return view === "landing" ? (
+    <Landing onLaunch={() => setView("console")} />
+  ) : (
+    <Console onHome={() => setView("landing")} />
   );
 }
