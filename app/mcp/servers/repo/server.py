@@ -39,10 +39,18 @@ def _as_int(value, default: int) -> int:
 
 
 def _safe_path(relative: str) -> Path:
-    """Resolve a relative path and ensure it stays inside REPO_PATH."""
-    candidate = (REPO_PATH / relative).resolve()
-    if REPO_PATH not in candidate.parents and candidate != REPO_PATH:
-        raise ValueError(f"path '{relative}' escapes the repository sandbox")
+    """Resolve a relative path and ensure it stays inside REPO_PATH.
+
+    Uses realpath so symlinks are fully resolved before the boundary check —
+    a symlinked child that points outside the repo is rejected.
+    """
+    root = Path(os.path.realpath(REPO_PATH))
+    candidate = Path(os.path.realpath(REPO_PATH / relative))
+    if candidate != root:
+        try:
+            candidate.relative_to(root)
+        except ValueError:
+            raise ValueError(f"path '{relative}' escapes the repository sandbox")
     return candidate
 
 
@@ -71,7 +79,8 @@ def read_file(path: str, start_line: int | str = 1, end_line: int | str | None =
     target = _safe_path(path)
     if not target.is_file():
         return f"error: '{path}' is not a file"
-    start_line = _as_int(start_line, 1)
+    # Clamp to >=1 so start_line=0 doesn't become lines[-1:] (negative-index wrap).
+    start_line = max(1, _as_int(start_line, 1))
     lines = target.read_text(errors="replace").splitlines()
     end = _as_int(end_line, len(lines)) if end_line is not None else len(lines)
     selected = lines[start_line - 1 : end]
@@ -93,14 +102,16 @@ def grep(pattern: str, glob: str = "*", max_results: int | str = 50) -> list[str
 
     results: list[str] = []
     for file in REPO_PATH.rglob(glob):
-        if any(part in _IGNORE for part in file.parts):
+        if not file.is_file() or file.is_symlink():
             continue
-        if not file.is_file():
+        # Ignore based on path *relative to the repo* — otherwise an ancestor
+        # directory named e.g. "venv" above REPO_PATH would skip the whole repo.
+        rel = file.relative_to(REPO_PATH)
+        if any(part in _IGNORE for part in rel.parts):
             continue
         try:
             for n, line in enumerate(file.read_text(errors="replace").splitlines(), 1):
                 if regex.search(line):
-                    rel = file.relative_to(REPO_PATH)
                     results.append(f"{rel}:{n}: {line.strip()}")
                     if len(results) >= max_results:
                         return results

@@ -10,7 +10,7 @@ export function ActivityTimeline({ trace, thinking }: Props) {
   if (trace.length === 0 && !thinking) return null;
 
   return (
-    <div className="timeline">
+    <div className="timeline" aria-live="polite" aria-busy={thinking}>
       <div className="timeline__head">Agent activity</div>
       <ul className="timeline__list">
         {trace.map((step, i) => (

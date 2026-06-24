@@ -16,7 +16,6 @@ export function useCopilot() {
   const threadId = useRef(`web-${newId()}`).current;
   const [turns, setTurns] = useState<Turn[]>([]);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const patch = useCallback((id: string, update: Partial<Turn>) => {
     setTurns((prev) => prev.map((t) => (t.id === id ? { ...t, ...update } : t)));
@@ -40,7 +39,6 @@ export function useCopilot() {
   /** Send a new question. */
   const send = useCallback(
     async (message: string) => {
-      setError(null);
       const userTurn: Turn = {
         id: newId(),
         role: "user",
@@ -63,8 +61,11 @@ export function useCopilot() {
         const res = await api.chat(threadId, message);
         applyResponse(assistantTurn.id, res);
       } catch (e) {
-        patch(assistantTurn.id, { status: "completed", text: "" });
-        setError(e instanceof Error ? e.message : String(e));
+        // Surface transport failures (e.g. backend down) as a visible error turn.
+        patch(assistantTurn.id, {
+          status: "error",
+          text: e instanceof Error ? e.message : String(e),
+        });
       } finally {
         setBusy(false);
       }
@@ -75,14 +76,17 @@ export function useCopilot() {
   /** Approve or reject the pending write action on a given turn. */
   const respond = useCallback(
     async (turnId: string, approved: boolean, reason = "") => {
-      setError(null);
       patch(turnId, { status: "thinking", approval: null });
       setBusy(true);
       try {
         const res = await api.approve(threadId, approved, reason);
         applyResponse(turnId, res);
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
+        // Don't leave the turn stuck on the spinner — show the error.
+        patch(turnId, {
+          status: "error",
+          text: e instanceof Error ? e.message : String(e),
+        });
       } finally {
         setBusy(false);
       }
@@ -90,5 +94,8 @@ export function useCopilot() {
     [threadId, applyResponse, patch]
   );
 
-  return { turns, busy, error, send, respond };
+  // Block new input while a turn is paused for approval (the thread is mid-graph).
+  const awaitingApproval = turns.some((t) => t.status === "awaiting_approval");
+
+  return { turns, busy, awaitingApproval, send, respond };
 }

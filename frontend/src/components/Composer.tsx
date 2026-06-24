@@ -38,6 +38,7 @@ export function Composer({ disabled, onSend }: Props) {
       <div className="composer__input">
         <textarea
           rows={1}
+          aria-label="Ask about an incident"
           placeholder="Ask about an incident…"
           value={value}
           disabled={disabled}

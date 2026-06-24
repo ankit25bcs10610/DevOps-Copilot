@@ -7,7 +7,7 @@ import { Sidebar } from "./components/Sidebar";
 import { useCopilot } from "./hooks/useCopilot";
 
 export default function App() {
-  const { turns, busy, send, respond } = useCopilot();
+  const { turns, busy, awaitingApproval, send, respond } = useCopilot();
   const endRef = useRef<HTMLDivElement>(null);
 
   // Keep the latest message in view as the conversation grows.
@@ -53,7 +53,7 @@ export default function App() {
           )}
         </main>
 
-        <Composer disabled={busy} onSend={send} />
+        <Composer disabled={busy || awaitingApproval} onSend={send} />
         </div>
       </div>
     </div>

@@ -19,3 +19,11 @@
   expect_keywords: ["checkout-svc", "inventory-svc"]
   expect_tools_any: ["list_services", "search_logs"]
   expect_tools_any_2: ["list_services", "search_logs"]
+
+- name: recent_change_cause
+  question: "What recent code change most likely caused the checkout failures?"
+  expect_keywords: ["checkout", "discount"]
+  # Exercises the git/commit-history path (git_log on the repo server or the
+  # GitHub commit tools), which the other cases never touch.
+  expect_tools_any: ["git_log", "list_recent_commits", "get_commit_diff"]
+  expect_tools_any_2: ["git_log", "list_recent_commits", "get_commit_diff", "read_file", "grep"]

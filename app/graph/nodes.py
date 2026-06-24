@@ -43,14 +43,19 @@ def make_plan_node():
 
 def make_agent_node(tools):
     """Node: the reasoning loop. Binds tools and lets Claude decide the next
-    action (call a tool) or produce a final answer (no tool calls)."""
+    action (call a tool) or produce a final answer (no tool calls).
+
+    Every agent call increments `iteration`. This is the counter that actually
+    bounds the agent<->tools hot loop (route_after_agent forces termination once
+    it reaches copilot_max_iterations), so the agent can't spin forever.
+    """
     llm = get_llm().bind_tools(tools)
 
     def agent_node(state: AgentState) -> dict:
         plan_text = "\n".join(state.get("plan", [])) or "(no explicit plan)"
         system = SystemMessage(content=AGENT_SYSTEM.format(plan=plan_text))
         resp = llm.invoke([system, *state["messages"]])
-        return {"messages": [resp]}
+        return {"messages": [resp], "iteration": state.get("iteration", 0) + 1}
 
     return agent_node
 
@@ -65,13 +70,19 @@ def approval_node(state: AgentState) -> dict:
                      hand control back to the agent to choose another path
     """
     last = state["messages"][-1]
-    write_calls = [c for c in getattr(last, "tool_calls", []) if c["name"] in WRITE_TOOLS]
+    all_calls = list(getattr(last, "tool_calls", []))
 
+    # Surface EVERY tool call that will run (the ToolNode executes the whole
+    # message on approval), tagging which ones mutate state — so the reviewer
+    # isn't shown only the write and silently approving co-bundled reads too.
     decision = interrupt(
         {
             "type": "approval_request",
-            "message": "The agent wants to perform a write action.",
-            "actions": [{"tool": c["name"], "args": c["args"]} for c in write_calls],
+            "message": "The agent wants to run an action that includes a write operation.",
+            "actions": [
+                {"tool": c["name"], "args": c["args"], "write": c["name"] in WRITE_TOOLS}
+                for c in all_calls
+            ],
         }
     )
 
@@ -106,9 +117,9 @@ def make_reflect_node():
     settings = get_settings()
 
     def reflect_node(state: AgentState) -> dict:
-        iteration = state.get("iteration", 0) + 1
-        if iteration >= settings.copilot_max_iterations:
-            return {"iteration": iteration, "status": "done"}
+        # `iteration` is incremented in agent_node; reflect only reads it.
+        if state.get("iteration", 0) >= settings.copilot_max_iterations:
+            return {"status": "done"}
 
         request = _last_user_text(state)
         latest_answer = ""
@@ -129,6 +140,6 @@ def make_reflect_node():
         )
         verdict = str(resp.content).strip().upper()
         status = "done" if verdict.startswith("DONE") else "investigating"
-        return {"iteration": iteration, "status": status}
+        return {"status": status}
 
     return reflect_node

@@ -5,6 +5,7 @@ export type TurnStatus = "completed" | "awaiting_approval" | "error";
 export interface ProposedAction {
   tool: string;
   args: Record<string, unknown>;
+  write?: boolean;
 }
 
 export interface ApprovalRequest {

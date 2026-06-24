@@ -21,6 +21,16 @@ _DEFAULTS = {
 }
 
 
+def _resolve_model(fast: bool) -> str:
+    """Resolve the model id for the configured provider (pure; no API call)."""
+    settings = get_settings()
+    provider = settings.copilot_provider
+    if provider not in _DEFAULTS:
+        raise ValueError(f"unknown COPILOT_PROVIDER '{provider}' (use anthropic|groq)")
+    override = settings.copilot_fast_model if fast else settings.copilot_model
+    return override or _DEFAULTS[provider]["fast" if fast else "main"]
+
+
 def get_llm(fast: bool = False, model: str | None = None) -> BaseChatModel:
     """Return a configured chat model.
 
@@ -29,13 +39,9 @@ def get_llm(fast: bool = False, model: str | None = None) -> BaseChatModel:
         model: explicit model id override (skips the provider default).
     """
     settings = get_settings()
-    provider = settings.copilot_provider.lower()
-    if provider not in _DEFAULTS:
-        raise ValueError(f"unknown COPILOT_PROVIDER '{provider}' (use anthropic|groq)")
-
+    provider = settings.copilot_provider
     if model is None:
-        override = settings.copilot_fast_model if fast else settings.copilot_model
-        model = override or _DEFAULTS[provider]["fast" if fast else "main"]
+        model = _resolve_model(fast)
 
     if provider == "anthropic":
         from langchain_anthropic import ChatAnthropic
@@ -58,9 +64,9 @@ def get_llm(fast: bool = False, model: str | None = None) -> BaseChatModel:
 
 
 def resolved_models() -> tuple[str, str]:
-    """Return the (main, fast) model ids that will actually be used — with
-    provider defaults applied. Construction makes no API call."""
-    return get_llm().model, get_llm(fast=True).model
+    """Return the (main, fast) model ids that will be used. Pure — builds no
+    client (the old version constructed two chat models just to read .model)."""
+    return _resolve_model(False), _resolve_model(True)
 
 
 def active_api_key() -> str:
@@ -68,6 +74,6 @@ def active_api_key() -> str:
     settings = get_settings()
     return (
         settings.anthropic_api_key
-        if settings.copilot_provider.lower() == "anthropic"
+        if settings.copilot_provider == "anthropic"
         else settings.groq_api_key
     )

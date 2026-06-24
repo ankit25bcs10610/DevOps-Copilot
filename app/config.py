@@ -9,6 +9,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Project root = two levels up from this file (app/config.py -> app -> root)
@@ -36,6 +37,13 @@ class Settings(BaseSettings):
     target_repo_path: str = "./sample_repo"
     logs_data_path: str = "./app/mcp/servers/logs_metrics/sample_data"
     github_token: str = ""
+    # "owner/repo" — required only when github_token is set (real GitHub mode).
+    github_repo: str = ""
+
+    # --- API ---
+    # Comma-separated browser origins allowed by CORS (the dev server is always
+    # allowed). Set this to your deployed frontend origin in production.
+    cors_origins: str = ""
 
     # --- Observability ---
     langchain_tracing_v2: bool = False
@@ -43,8 +51,20 @@ class Settings(BaseSettings):
     langchain_project: str = "devops-copilot"
 
     # --- Agent behavior ---
-    copilot_max_iterations: int = 6
+    # Max agent (LLM) calls per turn — bounds the agent<->tools loop.
+    copilot_max_iterations: int = 8
     copilot_checkpoint_db: str = "./copilot_checkpoints.sqlite"
+
+    @field_validator("copilot_provider")
+    @classmethod
+    def _normalize_provider(cls, v: str) -> str:
+        return v.strip().lower()
+
+    @property
+    def allowed_origins(self) -> list[str]:
+        base = ["http://localhost:5173", "http://127.0.0.1:5173"]
+        extra = [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+        return base + extra
 
     @property
     def repo_path(self) -> Path:

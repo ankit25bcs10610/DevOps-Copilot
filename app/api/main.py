@@ -13,6 +13,7 @@ graph state to SQLite/Postgres, so sessions are reconstructable).
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
@@ -48,6 +49,19 @@ MCP_CATALOG = [
 
 # thread_id -> live session
 _SESSIONS: dict[str, CopilotSession] = {}
+# Serializes session creation so concurrent first requests for the same thread
+# don't each spin up (and leak) a session.
+_SESSION_LOCK = asyncio.Lock()
+
+
+async def _evict(thread_id: str) -> None:
+    """Drop a session and release its MCP subprocesses, ignoring teardown errors."""
+    session = _SESSIONS.pop(thread_id, None)
+    if session is not None:
+        try:
+            await session.__aexit__(None, None, None)
+        except Exception:  # noqa: BLE001 — best-effort cleanup
+            pass
 
 
 @asynccontextmanager
@@ -61,10 +75,10 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="DevOps Copilot", version="0.1.0", lifespan=lifespan)
 
-# Allow the React dev server (and a configurable prod origin) to call the API.
+# Allow the React dev server plus any origins configured via CORS_ORIGINS.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=get_settings().allowed_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -117,12 +131,17 @@ def _to_response(thread_id: str, result: TurnResult) -> ChatResponse:
 
 async def _get_session(thread_id: str, create: bool) -> CopilotSession:
     session = _SESSIONS.get(thread_id)
-    if session is None:
-        if not create:
-            raise HTTPException(404, f"no active session for thread '{thread_id}'")
-        session = await CopilotSession(thread_id=thread_id).__aenter__()
-        _SESSIONS[thread_id] = session
-    return session
+    if session is not None:
+        return session
+    if not create:
+        raise HTTPException(404, f"no active session for thread '{thread_id}'")
+    # Re-check under the lock so two concurrent first-requests don't both build one.
+    async with _SESSION_LOCK:
+        session = _SESSIONS.get(thread_id)
+        if session is None:
+            session = await CopilotSession(thread_id=thread_id).__aenter__()
+            _SESSIONS[thread_id] = session
+        return session
 
 
 @app.get("/healthz")
@@ -146,10 +165,15 @@ async def config() -> dict:
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest) -> ChatResponse:
+    existed = req.thread_id in _SESSIONS
     session = await _get_session(req.thread_id, create=True)
     try:
         result = await session.ask(req.message)
     except Exception as exc:  # noqa: BLE001 — surface a clean error to the UI
+        # If this session was just created and its first turn failed, drop it so
+        # a retry rebuilds cleanly instead of reusing a half-initialized session.
+        if not existed:
+            await _evict(req.thread_id)
         return ChatResponse(
             thread_id=req.thread_id, status="error", answer=_friendly_error(exc)
         )

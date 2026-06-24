@@ -11,14 +11,24 @@ export function useConfig(): AppConfig | null {
 
   useEffect(() => {
     let active = true;
-    if (!cache) cache = getConfig();
-    cache
-      .then((c) => active && setCfg(c))
-      .catch(() => {
-        cache = null; // allow a later retry if the backend wasn't up yet
-      });
+    let timer: ReturnType<typeof setTimeout>;
+
+    const attempt = (retriesLeft: number) => {
+      if (!cache) cache = getConfig();
+      cache
+        .then((c) => active && setCfg(c))
+        .catch(() => {
+          cache = null; // drop the rejected promise so the next attempt refetches
+          if (active && retriesLeft > 0) {
+            timer = setTimeout(() => attempt(retriesLeft - 1), 3000);
+          }
+        });
+    };
+
+    attempt(10); // recover if the backend wasn't up yet (≈30s of retries)
     return () => {
       active = false;
+      clearTimeout(timer);
     };
   }, []);
 

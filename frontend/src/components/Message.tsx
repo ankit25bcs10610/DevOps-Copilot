@@ -36,7 +36,7 @@ export function Message({ turn, onDecision }: Props) {
         )}
 
         {turn.status === "error" && (
-          <div className="inline-error">
+          <div className="inline-error" role="alert">
             <span className="inline-error__icon">⚠️</span>
             <span>{turn.text}</span>
           </div>

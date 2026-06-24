@@ -23,7 +23,7 @@ export function ApprovalCard({ request, disabled, onDecision }: Props) {
       {request.actions.map((action, i) => (
         <div key={i} className="approval__action">
           <div className="approval__tool">
-            <span className="approval__write">WRITE</span>
+            {action.write !== false && <span className="approval__write">WRITE</span>}
             <code>{action.tool}</code>
           </div>
           <dl className="approval__args">

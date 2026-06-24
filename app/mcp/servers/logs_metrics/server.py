@@ -63,6 +63,13 @@ def list_services() -> list[str]:
     return sorted(services)
 
 
+def _parse_line(line: str) -> tuple[str, str]:
+    """Return (level, service) from a log line of the form `<ts> <LEVEL> <svc> …`.
+    Used for exact-column matching instead of fragile substring checks."""
+    parts = line.split()
+    return (parts[1], parts[2]) if len(parts) >= 3 else ("", "")
+
+
 @mcp.tool()
 def search_logs(
     service: str | None = None,
@@ -81,9 +88,10 @@ def search_logs(
     limit = _as_int(limit, 50)
     results: list[str] = []
     for line in _read_log_lines():
-        if service and service not in line:
+        lvl, svc = _parse_line(line)
+        if service and svc != service:
             continue
-        if level and f" {level.upper()} " not in f" {line} ":
+        if level and lvl != level.upper():
             continue
         if contains and contains.lower() not in line.lower():
             continue
@@ -102,9 +110,10 @@ def get_error_summary(service: str | None = None) -> dict:
     """
     counter: Counter[str] = Counter()
     for line in _read_log_lines():
-        if " ERROR " not in f" {line} ":
+        lvl, svc = _parse_line(line)
+        if lvl != "ERROR":
             continue
-        if service and service not in line:
+        if service and svc != service:
             continue
         # Pull out the error="..." payload if present, else use the tail.
         if 'error="' in line:
@@ -140,9 +149,14 @@ def get_metric(service: str, metric: str) -> dict:
     series = svc.get(metric)
     if series is None:
         return {"error": f"unknown metric '{metric}'", "available": list(svc)}
+    if not series:
+        return {"error": f"metric '{metric}' has no data points",
+                "service": service, "metric": metric}
 
-    first, last = series[0]["value"], series[-1]["value"]
-    if last > first:
+    first, last = series[0].get("value"), series[-1].get("value")
+    if first is None or last is None:
+        trend = "unknown"
+    elif last > first:
         trend = "rising"
     elif last < first:
         trend = "falling"

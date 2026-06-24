@@ -20,9 +20,22 @@ import os
 from mcp.server.fastmcp import FastMCP
 
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
+# "owner/repo" the real-API calls target. Required only in real (token) mode.
+GITHUB_REPO = os.environ.get("GITHUB_REPO", "").strip()
 OFFLINE = not GITHUB_TOKEN
 
 mcp = FastMCP("github")
+
+
+def _repo_or_error() -> tuple[str | None, dict | None]:
+    """Return (repo, None) when configured, else (None, error-dict). Avoids the
+    old hardcoded OWNER/REPO placeholders that 404'd on every real-mode call."""
+    if not GITHUB_REPO or "/" not in GITHUB_REPO:
+        return None, {
+            "error": "GITHUB_REPO is not set (expected 'owner/repo'). "
+            "Set it to use the real GitHub API, or unset GITHUB_TOKEN for the offline demo."
+        }
+    return GITHUB_REPO, None
 
 
 def _as_int(value, default: int) -> int:
@@ -76,11 +89,13 @@ def list_recent_commits(branch: str = "main", max_count: int | str = 5) -> list[
     max_count = _as_int(max_count, 5)
     if OFFLINE:
         return _DEMO_COMMITS[:max_count]
-    # Real-API path (kept minimal; wired the same way as offline shape).
+    repo, err = _repo_or_error()
+    if err:
+        return [err]
     import httpx  # local import so offline mode needs no extra deps
 
     resp = httpx.get(
-        "https://api.github.com/repos/OWNER/REPO/commits",
+        f"https://api.github.com/repos/{repo}/commits",
         params={"sha": branch, "per_page": max_count},
         headers={"Authorization": f"Bearer {GITHUB_TOKEN}"},
         timeout=15,
@@ -102,10 +117,13 @@ def get_commit_diff(sha: str) -> str:
     """Return the unified diff/patch introduced by a commit."""
     if OFFLINE:
         return _DEMO_DIFF
+    repo, err = _repo_or_error()
+    if err:
+        return err["error"]
     import httpx
 
     resp = httpx.get(
-        f"https://api.github.com/repos/OWNER/REPO/commits/{sha}",
+        f"https://api.github.com/repos/{repo}/commits/{sha}",
         headers={
             "Authorization": f"Bearer {GITHUB_TOKEN}",
             "Accept": "application/vnd.github.v3.diff",
@@ -125,16 +143,19 @@ def create_pull_request(title: str, body: str, head: str, base: str = "main") ->
     """
     if OFFLINE:
         return {
-            "status": "created (simulated — offline demo mode)",
-            "url": f"https://github.com/OWNER/REPO/pull/42",
+            "status": "created (simulated — offline demo mode, no real PR opened)",
+            "url": "https://github.com/<owner>/<repo>/pull/42  (placeholder)",
             "title": title,
             "head": head,
             "base": base,
         }
+    repo, err = _repo_or_error()
+    if err:
+        return err
     import httpx
 
     resp = httpx.post(
-        "https://api.github.com/repos/OWNER/REPO/pulls",
+        f"https://api.github.com/repos/{repo}/pulls",
         json={"title": title, "body": body, "head": head, "base": base},
         headers={"Authorization": f"Bearer {GITHUB_TOKEN}"},
         timeout=15,

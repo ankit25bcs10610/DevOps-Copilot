@@ -43,7 +43,10 @@ def _server_config() -> dict:
             "command": py,
             "args": ["-m", "app.mcp.servers.github.server"],
             "transport": "stdio",
-            "env": {"GITHUB_TOKEN": settings.github_token},
+            "env": {
+                "GITHUB_TOKEN": settings.github_token,
+                "GITHUB_REPO": settings.github_repo,
+            },
         },
     }
 
