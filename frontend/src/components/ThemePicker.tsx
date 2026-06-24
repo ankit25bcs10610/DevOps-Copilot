@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { useTheme } from "../hooks/useTheme";
 import { THEMES } from "../themes";
+import { Icon } from "./Icon";
 
 export function ThemePicker() {
   const { theme, setTheme } = useTheme();
@@ -41,7 +42,7 @@ export function ThemePicker() {
           }}
         />
         <span className="theme-btn__label">{active.name}</span>
-        <span className="theme-btn__caret">▾</span>
+        <Icon name="chevron" size={13} className="theme-btn__caret" />
       </button>
 
       {open && (
@@ -71,7 +72,9 @@ export function ThemePicker() {
                 <span className="theme-card__name">{t.name}</span>
                 <span className="theme-card__desc">{t.description}</span>
               </span>
-              {t.id === theme && <span className="theme-card__check">✓</span>}
+              {t.id === theme && (
+                <Icon name="check" size={16} className="theme-card__check" />
+              )}
             </button>
           ))}
         </div>

@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import type { ApprovalRequest } from "../types";
+import { Icon } from "./Icon";
 
 interface Props {
   request: ApprovalRequest;
@@ -16,7 +17,9 @@ export function ApprovalCard({ request, disabled, onDecision }: Props) {
   return (
     <div className="approval">
       <div className="approval__head">
-        <span className="approval__badge">⏸ Approval required</span>
+        <span className="approval__badge">
+          <Icon name="pause" size={13} /> Approval required
+        </span>
         <span className="approval__msg">{request.message}</span>
       </div>
 

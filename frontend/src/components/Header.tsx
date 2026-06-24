@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { health } from "../api";
 import { modelShort, providerLabel, useConfig } from "../hooks/useConfig";
+import { Icon } from "./Icon";
 import { ThemePicker } from "./ThemePicker";
 
 export function Header() {
@@ -30,7 +31,9 @@ export function Header() {
   return (
     <header className="header">
       <div className="brand">
-        <span className="brand__logo">🛠️</span>
+        <span className="brand__logo">
+          <Icon name="tool" size={20} />
+        </span>
         <div>
           <h1 className="brand__title">DevOps Copilot</h1>
           <p className="brand__subtitle">Autonomous incident investigation</p>

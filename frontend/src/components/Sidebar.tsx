@@ -1,12 +1,20 @@
 import { providerLabel, useConfig } from "../hooks/useConfig";
+import { Icon } from "./Icon";
 
 const PIPELINE = [
-  { icon: "📋", label: "Plan", hint: "decompose the request" },
-  { icon: "🔧", label: "Investigate", hint: "call MCP tools" },
-  { icon: "⏸", label: "Approve", hint: "human-in-the-loop" },
-  { icon: "🧠", label: "Diagnose", hint: "root cause + fix" },
-  { icon: "🔁", label: "Reflect", hint: "done or loop" },
+  { icon: "clipboard", label: "Plan", hint: "decompose the request" },
+  { icon: "search", label: "Investigate", hint: "call MCP tools" },
+  { icon: "pause", label: "Approve", hint: "human-in-the-loop" },
+  { icon: "insight", label: "Diagnose", hint: "root cause + fix" },
+  { icon: "refresh", label: "Reflect", hint: "done or loop" },
 ];
+
+// Per-server glyphs (keyed by backend server name).
+const SERVER_ICON: Record<string, string> = {
+  "logs-metrics": "database",
+  repo: "folder",
+  github: "branch",
+};
 
 export function Sidebar() {
   const cfg = useConfig();
@@ -43,6 +51,11 @@ export function Sidebar() {
           {(cfg?.servers ?? []).map((s) => (
             <div key={s.name} className="server">
               <div className="server__head">
+                <Icon
+                  name={SERVER_ICON[s.name] ?? "server"}
+                  size={15}
+                  className="server__icon"
+                />
                 <span className="server__name">{s.label}</span>
                 {s.custom && <span className="server__badge">custom</span>}
               </div>
@@ -63,7 +76,9 @@ export function Sidebar() {
         <ol className="pipeline">
           {PIPELINE.map((p) => (
             <li key={p.label} className="pipeline__step">
-              <span className="pipeline__icon">{p.icon}</span>
+              <span className="pipeline__icon">
+                <Icon name={p.icon} size={16} />
+              </span>
               <span className="pipeline__label">{p.label}</span>
               <span className="pipeline__hint">{p.hint}</span>
             </li>

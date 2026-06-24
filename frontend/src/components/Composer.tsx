@@ -1,5 +1,7 @@
 import { useState } from "react";
 
+import { Icon } from "./Icon";
+
 interface Props {
   disabled: boolean;
   onSend: (message: string) => void;
@@ -50,8 +52,14 @@ export function Composer({ disabled, onSend }: Props) {
             }
           }}
         />
-        <button className="btn btn--send" disabled={disabled} onClick={submit}>
-          {disabled ? "…" : "Send"}
+        <button
+          className="btn btn--send"
+          disabled={disabled}
+          onClick={submit}
+          aria-label="Send message"
+        >
+          <Icon name="send" size={15} />
+          <span>Send</span>
         </button>
       </div>
     </div>

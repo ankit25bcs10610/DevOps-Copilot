@@ -74,8 +74,9 @@
   --border: #d7dde7;
   --border-soft: #e6eaf1;
   --text: #1a2230;
-  --text-dim: #5b6677;
-  --text-faint: #8a94a6;
+  --text-dim: #51607a;
+  /* >=4.5:1 contrast even on the dimmest light surface (--bg #eef1f6 → 5.6:1) */
+  --text-faint: #5a6577;
   --accent: #3b6fed;
   --accent-2: #7c5cff;
   --accent-soft: rgba(59, 111, 237, 0.10);
@@ -107,6 +108,18 @@ body {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: 6px;
+}
+
+/* honor users who prefer reduced motion (ui-ux-pro-max checklist) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 button,
 textarea,
@@ -250,6 +263,10 @@ input {
   gap: 7px;
   margin-bottom: 8px;
 }
+.server__icon {
+  color: var(--accent);
+  flex: 0 0 auto;
+}
 .server__name {
   font-size: 12.5px;
   font-weight: 600;
@@ -303,7 +320,9 @@ input {
 .pipeline__icon {
   grid-row: 1 / 3;
   align-self: center;
-  font-size: 15px;
+  display: grid;
+  place-items: center;
+  color: var(--accent);
 }
 .pipeline__label {
   font-size: 12.5px;
@@ -350,7 +369,7 @@ input {
   height: 40px;
   display: grid;
   place-items: center;
-  font-size: 20px;
+  color: #fff;
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
   border-radius: 11px;
   box-shadow: 0 6px 18px -6px var(--accent);
@@ -500,7 +519,7 @@ input {
   padding: 9px 10px;
   cursor: pointer;
   text-align: left;
-  transition: background 0.12s, border-color 0.12s;
+  transition: background 0.15s, border-color 0.15s;
 }
 .theme-card:hover {
   background: var(--panel);
@@ -532,8 +551,8 @@ input {
 }
 .theme-card__check {
   margin-left: auto;
+  flex: 0 0 auto;
   color: var(--accent);
-  font-weight: 700;
 }
 
 /* ---- Chat body ---- */
@@ -564,7 +583,7 @@ input {
   height: 64px;
   display: grid;
   place-items: center;
-  font-size: 30px;
+  color: var(--accent);
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 18px;
@@ -633,7 +652,7 @@ input {
   height: 34px;
   display: grid;
   place-items: center;
-  font-size: 16px;
+  color: var(--accent);
   background: var(--panel-2);
   border: 1px solid var(--border);
   border-radius: 50%;
@@ -676,7 +695,7 @@ input {
 .timeline__list {
   list-style: none;
   margin: 0;
-  padding: 0 0 0 4px;
+  padding: 0;
   display: flex;
   flex-direction: column;
   gap: 9px;
@@ -685,30 +704,37 @@ input {
 .timeline__list::before {
   content: "";
   position: absolute;
-  left: 7px;
-  top: 4px;
-  bottom: 4px;
+  left: 8px;
+  top: 6px;
+  bottom: 6px;
   width: 1px;
   background: var(--border);
 }
 .timeline__item {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   font-size: 12.5px;
   color: var(--text-dim);
   position: relative;
 }
-.timeline__bullet {
-  flex: 0 0 7px;
+.timeline__icon {
+  flex: 0 0 17px;
+  height: 17px;
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+  background: var(--bg);
+  border-radius: 50%;
+  z-index: 1;
+}
+.timeline__dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
   background: var(--accent);
-  z-index: 1;
-  box-shadow: 0 0 0 3px var(--bg);
 }
-.timeline__bullet--live {
+.timeline__dot--live {
   background: var(--warn);
   animation: pulse 1.1s ease-in-out infinite;
 }
@@ -770,6 +796,11 @@ input {
   font-size: 13px;
   line-height: 1.5;
 }
+.inline-error__icon {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--bad);
+}
 
 /* ---- Approval card ---- */
 .approval {
@@ -787,6 +818,9 @@ input {
   margin-bottom: 12px;
 }
 .approval__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   background: var(--warn);
   color: #1a1206;
   font-weight: 700;
@@ -899,9 +933,13 @@ input {
   border: 1px solid rgba(255, 107, 107, 0.5);
 }
 .btn--send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
   color: #fff;
-  padding: 0 20px;
+  padding: 0 18px;
   height: 44px;
   flex: 0 0 auto;
 }

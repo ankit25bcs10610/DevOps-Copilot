@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 
 import { Composer } from "./components/Composer";
 import { Header } from "./components/Header";
+import { Icon } from "./components/Icon";
 import { Message } from "./components/Message";
 import { Sidebar } from "./components/Sidebar";
 import { useCopilot } from "./hooks/useCopilot";
@@ -10,9 +11,11 @@ export default function App() {
   const { turns, busy, awaitingApproval, send, respond } = useCopilot();
   const endRef = useRef<HTMLDivElement>(null);
 
-  // Keep the latest message in view as the conversation grows.
+  // Keep the latest message in view as the conversation grows. JS smooth-scroll
+  // ignores the CSS reduced-motion override, so gate it on the media query.
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    endRef.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth" });
   }, [turns]);
 
   return (
@@ -25,7 +28,9 @@ export default function App() {
         <main className="chat">
           {turns.length === 0 ? (
             <div className="empty">
-              <div className="empty__icon">🛠️</div>
+              <div className="empty__icon">
+                <Icon name="tool" size={28} />
+              </div>
               <h2 className="empty__title">Investigate a production incident</h2>
               <p className="empty__text">
                 Ask a question and the agent pulls logs &amp; metrics, reads the

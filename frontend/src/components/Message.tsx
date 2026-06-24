@@ -3,6 +3,7 @@ import ReactMarkdown from "react-markdown";
 import type { Turn } from "../types";
 import { ActivityTimeline } from "./ActivityTimeline";
 import { ApprovalCard } from "./ApprovalCard";
+import { Icon } from "./Icon";
 
 interface Props {
   turn: Turn;
@@ -22,7 +23,9 @@ export function Message({ turn, onDecision }: Props) {
 
   return (
     <div className="row row--assistant">
-      <div className="avatar">🤖</div>
+      <div className="avatar">
+        <Icon name="bot" size={18} />
+      </div>
       <div className="bubble bubble--assistant">
         <ActivityTimeline trace={turn.trace} thinking={thinking} />
 
@@ -37,7 +40,7 @@ export function Message({ turn, onDecision }: Props) {
 
         {turn.status === "error" && (
           <div className="inline-error" role="alert">
-            <span className="inline-error__icon">⚠️</span>
+            <Icon name="alert" size={16} className="inline-error__icon" />
             <span>{turn.text}</span>
           </div>
         )}
