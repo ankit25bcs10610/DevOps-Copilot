@@ -7,12 +7,6 @@ interface Props {
   onSend: (message: string) => void;
 }
 
-const SUGGESTIONS = [
-  "Why is the checkout API throwing 500 errors?",
-  "Is the checkout service error rate going up or down?",
-  "Which services are emitting logs right now?",
-];
-
 export function Composer({ disabled, onSend }: Props) {
   const [value, setValue] = useState("");
 
@@ -25,33 +19,22 @@ export function Composer({ disabled, onSend }: Props) {
 
   return (
     <div className="composer">
-      <div className="composer__suggestions">
-        {SUGGESTIONS.map((s) => (
-          <button
-            key={s}
-            className="chip"
-            disabled={disabled}
-            onClick={() => onSend(s)}
-          >
-            {s}
-          </button>
-        ))}
-      </div>
-      <div className="composer__input">
-        <textarea
-          rows={1}
-          aria-label="Ask about an incident"
-          placeholder="Ask about an incident…"
-          value={value}
-          disabled={disabled}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              submit();
-            }
-          }}
-        />
+      <textarea
+        className="composer__field"
+        rows={1}
+        aria-label="Ask about an incident"
+        placeholder="Ask about an incident…"
+        value={value}
+        disabled={disabled}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            submit();
+          }
+        }}
+      />
+      <div className="composer__actions">
         <button
           className="btn btn--send"
           disabled={disabled}
@@ -61,6 +44,7 @@ export function Composer({ disabled, onSend }: Props) {
           <Icon name="send" size={15} />
           <span>Send</span>
         </button>
+        <span className="composer__hint">⌘ Enter</span>
       </div>
     </div>
   );

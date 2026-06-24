@@ -1253,62 +1253,390 @@ input {
 
 /* ---- Composer ---- */
 .composer {
-  border-top: 1px solid var(--border-soft);
-  padding: 14px 18px 16px;
-  background: var(--shell);
-}
-.composer__suggestions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 11px;
-}
-.chip {
+  align-items: center;
+  gap: 12px;
   background: var(--panel);
-  border: 1px solid var(--border);
-  color: var(--text-dim);
-  border-radius: 999px;
-  padding: 7px 13px;
-  font-size: 12px;
-  font-family: inherit;
-  cursor: pointer;
-  transition: all 0.15s;
+  border: 1px solid var(--accent);
+  border-radius: 16px;
+  padding: 12px 12px 12px 16px;
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
-.chip:hover:not(:disabled) {
+.composer__field {
+  flex: 1;
+  resize: none;
+  background: transparent;
+  border: none;
   color: var(--text);
+  font-size: 14.5px;
+  font-family: inherit;
+  line-height: 1.5;
+  max-height: 140px;
+  min-height: 24px;
+  padding: 4px 0;
+}
+.composer__field:focus {
+  outline: none;
+}
+.composer__field::placeholder {
+  color: var(--text-faint);
+}
+.composer__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+}
+.composer__hint {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  font-family: var(--mono);
+}
+
+/* ===================== Console (redesigned) ===================== */
+.cns {
+  position: relative;
+  z-index: 1;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px 18px 18px;
+}
+
+/* top bar */
+.cns-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 4px;
+}
+.cns-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text);
+}
+.cns-brand__logo {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  border-radius: 11px;
+  box-shadow: 0 6px 18px -6px var(--accent);
+}
+.cns-brand__txt {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+}
+.cns-brand__txt strong {
+  font-size: 16px;
+  font-weight: 700;
+}
+.cns-brand__txt span {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.cns-top__right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.cns-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  color: var(--text-dim);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+}
+
+/* body: sidebar + main */
+.cns-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 14px;
+}
+.cns-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: color-mix(in srgb, var(--shell) 82%, transparent);
+  backdrop-filter: blur(18px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.cns-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 28px 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.cns-dock {
+  padding: 14px 18px 18px;
+  border-top: 1px solid var(--border-soft);
+}
+
+/* welcome */
+.welcome {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+}
+.welcome__text {
+  max-width: 680px;
+}
+.welcome__greet {
+  margin: 0 0 6px;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 17px;
+}
+.welcome__title {
+  margin: 0 0 12px;
+  font-size: clamp(24px, 3vw, 32px);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.welcome__sub {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 14.5px;
+  line-height: 1.65;
+}
+.welcome__art {
+  flex: 0 0 auto;
+  width: 116px;
+  height: 116px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: linear-gradient(150deg, var(--accent), var(--accent-2));
+  border-radius: 26px;
+  box-shadow: 0 18px 50px -16px var(--accent);
+  transform: rotate(-6deg);
+}
+
+/* pipeline stepper */
+.pipe-card {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  background: var(--panel);
+  border: 1px solid var(--border-soft);
+  border-radius: 14px;
+  padding: 18px 22px;
+}
+.pipe-step__top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pipe-step__num {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 2px solid var(--accent);
+}
+.pipe-step__name {
+  font-weight: 600;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.pipe-step__line {
+  flex: 1;
+  height: 1px;
+  margin-left: 6px;
+  background: linear-gradient(90deg, var(--border), transparent);
+}
+.pipe-step__body {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+.pipe-step__icon {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
+}
+.pipe-step__sub {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* suggested questions */
+.suggest-card {
+  background: var(--panel);
+  border: 1px solid var(--border-soft);
+  border-radius: 14px;
+  padding: 18px 20px;
+}
+.suggest-card__head {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 14px;
+}
+.suggest-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.suggest-chip {
+  text-align: left;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  font-size: 13.5px;
+  font-family: inherit;
+  color: var(--accent);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.suggest-chip:hover:not(:disabled) {
   border-color: var(--accent);
   background: var(--accent-soft);
 }
-.chip:disabled {
-  opacity: 0.45;
+.suggest-chip:disabled {
+  opacity: 0.5;
   cursor: not-allowed;
 }
-.composer__input {
-  display: flex;
-  gap: 10px;
-  align-items: flex-end;
+
+/* feature row */
+.feature-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
 }
-.composer__input textarea {
-  flex: 1;
-  resize: none;
+.feature {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   background: var(--panel);
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  padding: 13px 14px;
+}
+.feature__icon {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
+}
+.feature__txt {
+  display: flex;
+  flex-direction: column;
+}
+.feature__txt strong {
+  font-size: 13px;
+}
+.feature__txt span {
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+/* sidebar additions */
+.online-pill {
+  color: var(--ok);
+  background: rgba(45, 212, 167, 0.12);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 3px 7px;
+  border-radius: 5px;
+}
+.side-help {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  text-decoration: none;
+  background: linear-gradient(135deg, var(--accent-soft), transparent);
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 12px 14px;
+  padding: 14px;
   color: var(--text);
-  font-size: 14px;
-  font-family: inherit;
-  line-height: 1.4;
-  max-height: 140px;
-  min-height: 44px;
+  transition: border-color 0.15s;
 }
-.composer__input textarea::placeholder {
-  color: var(--text-faint);
-}
-.composer__input textarea:focus {
-  outline: none;
+.side-help:hover {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.side-help__txt {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.side-help__txt strong {
+  font-size: 13px;
+}
+.side-help__txt span {
+  font-size: 12px;
+  color: var(--accent);
+}
+.side-help svg {
+  color: var(--accent);
+  flex: 0 0 auto;
+}
+
+@media (max-width: 1000px) {
+  .cns-body .sidebar {
+    display: none;
+  }
+  .feature-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .pipe-card {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .pipe-step__line {
+    display: none;
+  }
+}
+@media (max-width: 720px) {
+  .welcome__art {
+    display: none;
+  }
+  .suggest-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ---- Animations ---- */
