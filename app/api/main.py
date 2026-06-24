@@ -16,10 +16,12 @@ from __future__ import annotations
 import asyncio
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from app import runtime
 from app.config import get_settings
 from app.llm import resolved_models
 from app.session import CopilotSession, TurnResult
@@ -64,6 +66,20 @@ async def _evict(thread_id: str) -> None:
             pass
 
 
+async def _evict_all() -> None:
+    """Drop every session so future ones rebuild MCP with current credentials."""
+    for thread_id in list(_SESSIONS):
+        await _evict(thread_id)
+
+
+def _github_status() -> dict:
+    return {
+        "connected": runtime.github_connected(),
+        "repo": runtime.github_repo() or None,
+        "mode": "live" if runtime.github_connected() else "offline",
+    }
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     yield
@@ -93,6 +109,11 @@ class ApproveRequest(BaseModel):
     thread_id: str
     approved: bool
     reason: str = ""
+
+
+class GithubConnectRequest(BaseModel):
+    token: str
+    repo: str  # "owner/repo"
 
 
 class ChatResponse(BaseModel):
@@ -158,9 +179,60 @@ async def config() -> dict:
         "provider": settings.copilot_provider,
         "model": main_model,
         "fast_model": fast_model,
-        "offline_mode": settings.offline_mode,
+        "offline_mode": not runtime.github_connected(),
         "servers": MCP_CATALOG,
+        "github": _github_status(),
     }
+
+
+@app.get("/github/status")
+async def github_status() -> dict:
+    return _github_status()
+
+
+@app.post("/github/connect")
+async def github_connect(req: GithubConnectRequest) -> dict:
+    """Validate a GitHub token + repo against the real API, then switch the
+    GitHub MCP server into live mode (in-memory only — not persisted)."""
+    token = req.token.strip()
+    repo = req.repo.strip()
+    if not token or "/" not in repo:
+        raise HTTPException(400, "Provide a token and a repo as 'owner/repo'.")
+
+    # Verify the credentials actually work before storing them.
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                f"https://api.github.com/repos/{repo}",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                },
+            )
+    except httpx.HTTPError as exc:
+        raise HTTPException(502, f"Could not reach GitHub: {exc}") from exc
+
+    if resp.status_code == 401:
+        raise HTTPException(401, "GitHub rejected the token (check it's valid).")
+    if resp.status_code == 404:
+        raise HTTPException(404, f"Repo '{repo}' not found or the token lacks access.")
+    if resp.status_code >= 400:
+        raise HTTPException(resp.status_code, f"GitHub error: {resp.text[:200]}")
+
+    runtime.set_github(token, repo)
+    await _evict_all()  # rebuild sessions so the MCP server picks up live creds
+    data = resp.json()
+    status = _github_status()
+    status["full_name"] = data.get("full_name", repo)
+    status["private"] = data.get("private")
+    return status
+
+
+@app.post("/github/disconnect")
+async def github_disconnect() -> dict:
+    runtime.clear_github()
+    await _evict_all()
+    return _github_status()
 
 
 @app.post("/chat", response_model=ChatResponse)

@@ -1,6 +1,6 @@
 // Thin, typed client for the DevOps Copilot backend.
 
-import type { AppConfig, ChatResponse } from "./types";
+import type { AppConfig, ChatResponse, GithubStatus } from "./types";
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
@@ -40,6 +40,21 @@ export async function getConfig(): Promise<AppConfig> {
   const res = await fetch(`${BASE_URL}/config`);
   if (!res.ok) throw new Error(`config ${res.status}`);
   return res.json() as Promise<AppConfig>;
+}
+
+/** Current GitHub connection state. */
+export function githubStatus(): Promise<GithubStatus> {
+  return fetch(`${BASE_URL}/github/status`).then((r) => r.json());
+}
+
+/** Connect a GitHub repo (validated server-side against the real API). */
+export function githubConnect(token: string, repo: string): Promise<GithubStatus> {
+  return post<GithubStatus>("/github/connect", { token, repo });
+}
+
+/** Disconnect GitHub and revert to offline-demo mode. */
+export function githubDisconnect(): Promise<GithubStatus> {
+  return post<GithubStatus>("/github/disconnect", {});
 }
 
 /** Liveness check used by the header status dot. */

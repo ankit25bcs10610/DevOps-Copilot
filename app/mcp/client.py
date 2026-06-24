@@ -14,6 +14,7 @@ import sys
 from langchain_core.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
+from app import runtime
 from app.config import get_settings
 
 
@@ -43,9 +44,11 @@ def _server_config() -> dict:
             "command": py,
             "args": ["-m", "app.mcp.servers.github.server"],
             "transport": "stdio",
+            # Runtime creds (set via the UI "Connect GitHub" flow) take
+            # precedence over .env, so live mode can be toggled without restart.
             "env": {
-                "GITHUB_TOKEN": settings.github_token,
-                "GITHUB_REPO": settings.github_repo,
+                "GITHUB_TOKEN": runtime.github_token(),
+                "GITHUB_REPO": runtime.github_repo(),
             },
         },
     }

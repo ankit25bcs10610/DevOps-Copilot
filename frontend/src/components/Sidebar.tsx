@@ -1,4 +1,5 @@
 import { providerLabel, useConfig } from "../hooks/useConfig";
+import { GithubConnect } from "./GithubConnect";
 import { Icon } from "./Icon";
 
 const PIPELINE = [
@@ -70,6 +71,7 @@ export function Sidebar() {
                   </span>
                 ))}
               </div>
+              {s.name === "github" && <GithubConnect />}
             </div>
           ))}
         </div>

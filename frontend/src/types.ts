@@ -29,12 +29,21 @@ export interface McpServer {
   tools: string[];
 }
 
+export interface GithubStatus {
+  connected: boolean;
+  repo: string | null;
+  mode: "live" | "offline";
+  full_name?: string;
+  private?: boolean;
+}
+
 export interface AppConfig {
   provider: string;
   model: string;
   fast_model: string;
   offline_mode: boolean;
   servers: McpServer[];
+  github: GithubStatus;
 }
 
 // --- UI-side model ---
