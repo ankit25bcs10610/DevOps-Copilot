@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { githubConnect, githubDisconnect, githubStatus } from "../api";
+import { refreshConfig } from "../hooks/useConfig";
 import type { GithubStatus } from "../types";
 
 /** Connect-GitHub control rendered inside the sidebar's GitHub server card.
@@ -35,6 +36,7 @@ export function GithubConnect() {
       setStatus(s);
       setOpen(false);
       setToken("");
+      refreshConfig(); // clear the "offline demo" pill across the sidebar
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -46,6 +48,7 @@ export function GithubConnect() {
     setBusy(true);
     try {
       setStatus(await githubDisconnect());
+      refreshConfig();
     } finally {
       setBusy(false);
     }

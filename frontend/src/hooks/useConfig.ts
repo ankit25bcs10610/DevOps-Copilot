@@ -1,52 +1,67 @@
-import { useEffect, useState } from "react";
+import { useEffect, useReducer } from "react";
 
 import { getConfig } from "../api";
 import type { AppConfig } from "../types";
 
-// Module-level cache so Header + Sidebar share a single /config request.
-let cache: Promise<AppConfig> | null = null;
+// Shared, subscribable config store so every consumer (header badge, model
+// card, source cards) stays in sync — and any mutation can refresh them all.
+let _config: AppConfig | null = null;
+let _failed = false;
+let _started = false;
+const subs = new Set<() => void>();
+
+const emit = () => subs.forEach((f) => f());
+
+/** Force a refetch and notify all subscribers (call after a config change). */
+export async function refreshConfig(): Promise<AppConfig | null> {
+  try {
+    _config = await getConfig();
+    _failed = false;
+  } catch {
+    _failed = true;
+  }
+  emit();
+  return _config;
+}
+
+function ensureStarted() {
+  if (_started) return;
+  _started = true;
+  let tries = 0;
+  const attempt = async () => {
+    try {
+      _config = await getConfig();
+      _failed = false;
+      emit();
+    } catch {
+      tries += 1;
+      if (tries <= 10) {
+        setTimeout(attempt, 3000); // recover if the backend wasn't up yet
+      } else {
+        _failed = true;
+        emit();
+      }
+    }
+  };
+  attempt();
+}
 
 export interface ConfigState {
   config: AppConfig | null;
-  failed: boolean; // true once retries are exhausted (backend unreachable)
+  failed: boolean;
+  refresh: () => Promise<AppConfig | null>;
 }
 
 export function useConfig(): ConfigState {
-  const [config, setConfig] = useState<AppConfig | null>(null);
-  const [failed, setFailed] = useState(false);
-
+  const [, force] = useReducer((c: number) => c + 1, 0);
   useEffect(() => {
-    let active = true;
-    let timer: ReturnType<typeof setTimeout>;
-
-    const attempt = (retriesLeft: number) => {
-      if (!cache) cache = getConfig();
-      cache
-        .then((c) => {
-          if (active) {
-            setConfig(c);
-            setFailed(false);
-          }
-        })
-        .catch(() => {
-          cache = null; // drop the rejected promise so the next attempt refetches
-          if (!active) return;
-          if (retriesLeft > 0) {
-            timer = setTimeout(() => attempt(retriesLeft - 1), 3000);
-          } else {
-            setFailed(true); // give up → let the UI show an offline state
-          }
-        });
-    };
-
-    attempt(10); // recover if the backend wasn't up yet (≈30s of retries)
+    subs.add(force);
+    ensureStarted();
     return () => {
-      active = false;
-      clearTimeout(timer);
+      subs.delete(force);
     };
   }, []);
-
-  return { config, failed };
+  return { config: _config, failed: _failed, refresh: refreshConfig };
 }
 
 export const providerLabel = (p?: string) =>

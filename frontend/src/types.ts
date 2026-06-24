@@ -44,6 +44,8 @@ export interface AppConfig {
   offline_mode: boolean;
   servers: McpServer[];
   github: GithubStatus;
+  sources: { repo_path: string; logs_path: string };
+  has_key: boolean;
 }
 
 // --- UI-side model ---

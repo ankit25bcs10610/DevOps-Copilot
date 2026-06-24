@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, HTTPException
@@ -22,8 +23,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app import runtime
-from app.config import get_settings
-from app.llm import resolved_models
+from app.config import ROOT, get_settings
+from app.llm import active_api_key, resolved_models
 from app.session import CopilotSession, TurnResult
 
 # Static catalog of the MCP servers + their tools, surfaced to the UI sidebar.
@@ -116,6 +117,17 @@ class GithubConnectRequest(BaseModel):
     repo: str  # "owner/repo"
 
 
+class ModelConfigRequest(BaseModel):
+    provider: str  # "anthropic" | "groq"
+    api_key: str = ""
+    model: str = ""
+    fast_model: str = ""
+
+
+class SourcePathRequest(BaseModel):
+    path: str
+
+
 class ChatResponse(BaseModel):
     thread_id: str
     status: str  # "completed" | "awaiting_approval" | "error"
@@ -173,15 +185,19 @@ async def healthz() -> dict:
 @app.get("/config")
 async def config() -> dict:
     """Describe the running agent (provider, models, MCP servers) for the UI."""
-    settings = get_settings()
     main_model, fast_model = resolved_models()
     return {
-        "provider": settings.copilot_provider,
+        "provider": runtime.provider(),
         "model": main_model,
         "fast_model": fast_model,
         "offline_mode": not runtime.github_connected(),
         "servers": MCP_CATALOG,
         "github": _github_status(),
+        "sources": {
+            "repo_path": str(runtime.repo_path()),
+            "logs_path": str(runtime.logs_path()),
+        },
+        "has_key": bool(active_api_key()),
     }
 
 
@@ -233,6 +249,71 @@ async def github_disconnect() -> dict:
     runtime.clear_github()
     await _evict_all()
     return _github_status()
+
+
+@app.post("/model/configure")
+async def model_configure(req: ModelConfigRequest) -> dict:
+    """Switch the LLM provider/model (and key) at runtime. Pasting an Anthropic
+    key here unlocks Claude Opus 4.8 without touching .env."""
+    provider = req.provider.strip().lower()
+    if provider not in {"anthropic", "groq"}:
+        raise HTTPException(400, "provider must be 'anthropic' or 'groq'")
+
+    runtime.set_model(provider, req.api_key, req.model, req.fast_model)
+    if not active_api_key():
+        runtime.reset()  # don't leave a keyless provider configured
+        raise HTTPException(400, f"An API key is required for '{provider}'.")
+
+    await _evict_all()  # rebuild sessions so the new model/key is used
+    main_model, fast_model = resolved_models()
+    return {"provider": runtime.provider(), "model": main_model, "fast_model": fast_model}
+
+
+def _set_source(path: str, kind: str, setter) -> dict:
+    p = Path(path).expanduser()
+    if not p.is_absolute():
+        p = (ROOT / p)
+    if not p.exists():
+        raise HTTPException(404, f"path does not exist: {p}")
+    if not p.is_dir():
+        raise HTTPException(400, f"path is not a directory: {p}")
+    setter(path.strip())
+    return str(p.resolve())
+
+
+@app.post("/sources/repo")
+async def set_repo_source(req: SourcePathRequest) -> dict:
+    resolved = _set_source(req.path, "repo", runtime.set_repo_path)
+    await _evict_all()
+    return {"repo_path": resolved}
+
+
+@app.post("/sources/logs")
+async def set_logs_source(req: SourcePathRequest) -> dict:
+    resolved = _set_source(req.path, "logs", runtime.set_logs_path)
+    # Soft warning if the expected demo files aren't present.
+    p = Path(resolved)
+    missing = [f for f in ("app.log", "metrics.json") if not (p / f).exists()]
+    await _evict_all()
+    return {"logs_path": resolved, "missing_files": missing}
+
+
+@app.post("/reset")
+async def reset_config() -> dict:
+    """Revert all runtime overrides back to the .env defaults."""
+    runtime.reset()
+    await _evict_all()
+    main_model, fast_model = resolved_models()
+    return {
+        "provider": runtime.provider(),
+        "model": main_model,
+        "fast_model": fast_model,
+        "github": _github_status(),
+        "sources": {
+            "repo_path": str(runtime.repo_path()),
+            "logs_path": str(runtime.logs_path()),
+        },
+    }
 
 
 @app.post("/chat", response_model=ChatResponse)

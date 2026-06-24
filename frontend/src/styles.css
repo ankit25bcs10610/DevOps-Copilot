@@ -301,6 +301,91 @@ input {
   border-radius: 5px;
 }
 
+/* ---- inline config controls (model / sources) ---- */
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 0 0;
+}
+.link-btn:hover:not(:disabled) {
+  text-decoration: underline;
+}
+.link-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.cfg {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+.cfg__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.cfg__field select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 9px;
+  color: var(--text);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.cfg__field select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.cfg__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.cfg__reset {
+  color: var(--text-dim);
+}
+.cfg__apply {
+  margin-left: auto;
+  height: 32px;
+  padding: 0 16px;
+}
+
+.src {
+  margin-top: 9px;
+  border-top: 1px solid var(--border-soft);
+  padding-top: 9px;
+}
+.src__row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.src__path {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.src__row .gh__link {
+  margin-left: auto;
+}
+.src__warn {
+  margin-top: 6px;
+  font-size: 10.5px;
+  color: var(--warn);
+}
+
 /* ---- GitHub connect (inside the github server card) ---- */
 .gh {
   margin-top: 10px;

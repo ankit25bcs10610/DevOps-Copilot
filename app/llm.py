@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from langchain_core.language_models.chat_models import BaseChatModel
 
-from app.config import get_settings
+from app import runtime
 
 # Per-provider default models: (main, fast).
 _DEFAULTS = {
@@ -22,24 +22,23 @@ _DEFAULTS = {
 
 
 def _resolve_model(fast: bool) -> str:
-    """Resolve the model id for the configured provider (pure; no API call)."""
-    settings = get_settings()
-    provider = settings.copilot_provider
+    """Resolve the model id for the active provider (pure; no API call)."""
+    provider = runtime.provider()
     if provider not in _DEFAULTS:
-        raise ValueError(f"unknown COPILOT_PROVIDER '{provider}' (use anthropic|groq)")
-    override = settings.copilot_fast_model if fast else settings.copilot_model
+        raise ValueError(f"unknown provider '{provider}' (use anthropic|groq)")
+    override = runtime.fast_model_override() if fast else runtime.model_override()
     return override or _DEFAULTS[provider]["fast" if fast else "main"]
 
 
 def get_llm(fast: bool = False, model: str | None = None) -> BaseChatModel:
-    """Return a configured chat model.
+    """Return a configured chat model for the active provider (runtime override
+    aware, so the UI can switch provider/model/key without a restart).
 
     Args:
         fast: use the cheaper model (for plan/reflect) instead of the main one.
         model: explicit model id override (skips the provider default).
     """
-    settings = get_settings()
-    provider = settings.copilot_provider
+    provider = runtime.provider()
     if model is None:
         model = _resolve_model(fast)
 
@@ -49,7 +48,7 @@ def get_llm(fast: bool = False, model: str | None = None) -> BaseChatModel:
         # No temperature: Opus 4.8 removed sampling params and 400s if they're sent.
         return ChatAnthropic(
             model=model,
-            api_key=settings.anthropic_api_key,
+            api_key=runtime.anthropic_key(),
             max_tokens=4096,
         )
 
@@ -57,7 +56,7 @@ def get_llm(fast: bool = False, model: str | None = None) -> BaseChatModel:
 
     return ChatGroq(
         model=model,
-        api_key=settings.groq_api_key,
+        api_key=runtime.groq_key(),
         temperature=0.0,
         max_tokens=4096,
     )
@@ -70,10 +69,5 @@ def resolved_models() -> tuple[str, str]:
 
 
 def active_api_key() -> str:
-    """The API key required for the configured provider (for startup checks)."""
-    settings = get_settings()
-    return (
-        settings.anthropic_api_key
-        if settings.copilot_provider == "anthropic"
-        else settings.groq_api_key
-    )
+    """The API key required for the active provider (for startup checks)."""
+    return runtime.anthropic_key() if runtime.provider() == "anthropic" else runtime.groq_key()

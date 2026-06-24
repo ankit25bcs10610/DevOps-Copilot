@@ -1,6 +1,8 @@
 import { providerLabel, useConfig } from "../hooks/useConfig";
 import { GithubConnect } from "./GithubConnect";
 import { Icon } from "./Icon";
+import { ModelConfig } from "./ModelConfig";
+import { SourceConnect } from "./SourceConnect";
 
 const PIPELINE = [
   { icon: "clipboard", label: "Plan", hint: "decompose the request" },
@@ -20,6 +22,15 @@ const SERVER_ICON: Record<string, string> = {
 export function Sidebar() {
   const { config: cfg, failed } = useConfig();
   const placeholder = failed ? "Backend offline — start the API" : "Connecting…";
+
+  const sourceFor = (name: string) =>
+    name === "logs-metrics" ? (
+      <SourceConnect kind="logs" path={cfg?.sources.logs_path} />
+    ) : name === "repo" ? (
+      <SourceConnect kind="repo" path={cfg?.sources.repo_path} />
+    ) : name === "github" ? (
+      <GithubConnect />
+    ) : null;
 
   return (
     <aside className="sidebar">
@@ -45,6 +56,7 @@ export function Sidebar() {
             {placeholder}
           </div>
         )}
+        <ModelConfig />
       </section>
 
       <section className="side-section">
@@ -71,7 +83,7 @@ export function Sidebar() {
                   </span>
                 ))}
               </div>
-              {s.name === "github" && <GithubConnect />}
+              {sourceFor(s.name)}
             </div>
           ))}
         </div>

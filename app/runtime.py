@@ -1,37 +1,111 @@
 """Mutable runtime configuration set from the UI at run time.
 
-Right now this holds GitHub credentials the user connects via the sidebar.
-These override the static .env values (settings.github_token / github_repo) so a
-user can switch the GitHub MCP server from offline-demo to live mode without
-restarting the server. Stored in memory only — never written to disk.
+Holds overrides for the model/provider, GitHub credentials, and the repo/logs
+data sources. These take precedence over the static .env values (Settings) so a
+user can reconfigure the agent from the sidebar without restarting the server.
+Stored in memory only — never written to disk.
 """
 
 from __future__ import annotations
 
-from app.config import get_settings
+from pathlib import Path
 
-_github: dict[str, str] = {"token": "", "repo": ""}
+from app.config import ROOT, get_settings
+
+_ov: dict[str, str] = {
+    # model / provider
+    "provider": "",
+    "anthropic_key": "",
+    "groq_key": "",
+    "model": "",
+    "fast_model": "",
+    # github
+    "github_token": "",
+    "github_repo": "",
+    # data sources
+    "repo_path": "",
+    "logs_path": "",
+}
 
 
+def _resolve_path(p: str) -> Path:
+    pp = Path(p).expanduser()
+    return pp if pp.is_absolute() else (ROOT / pp)
+
+
+# ---- model / provider ----
+def provider() -> str:
+    return (_ov["provider"] or get_settings().copilot_provider).lower()
+
+
+def anthropic_key() -> str:
+    return _ov["anthropic_key"] or get_settings().anthropic_api_key
+
+
+def groq_key() -> str:
+    return _ov["groq_key"] or get_settings().groq_api_key
+
+
+def model_override() -> str:
+    return _ov["model"]
+
+
+def fast_model_override() -> str:
+    return _ov["fast_model"]
+
+
+def set_model(provider: str, api_key: str, model: str = "", fast_model: str = "") -> None:
+    prov = (provider or "").strip().lower()
+    _ov["provider"] = prov
+    if prov == "anthropic" and api_key:
+        _ov["anthropic_key"] = api_key.strip()
+    elif prov == "groq" and api_key:
+        _ov["groq_key"] = api_key.strip()
+    _ov["model"] = (model or "").strip()
+    _ov["fast_model"] = (fast_model or "").strip()
+
+
+# ---- github ----
 def set_github(token: str, repo: str) -> None:
-    _github["token"] = (token or "").strip()
-    _github["repo"] = (repo or "").strip()
+    _ov["github_token"] = (token or "").strip()
+    _ov["github_repo"] = (repo or "").strip()
 
 
 def clear_github() -> None:
-    _github["token"] = ""
-    _github["repo"] = ""
+    _ov["github_token"] = ""
+    _ov["github_repo"] = ""
 
 
 def github_token() -> str:
-    """Runtime token if connected, else the .env value."""
-    return _github["token"] or get_settings().github_token
+    return _ov["github_token"] or get_settings().github_token
 
 
 def github_repo() -> str:
-    return _github["repo"] or get_settings().github_repo
+    return _ov["github_repo"] or get_settings().github_repo
 
 
 def github_connected() -> bool:
-    """True when a usable token+repo is configured (runtime or env)."""
     return bool(github_token() and github_repo())
+
+
+# ---- data sources ----
+def repo_path() -> Path:
+    return _resolve_path(_ov["repo_path"]) if _ov["repo_path"] else get_settings().repo_path
+
+
+def logs_path() -> Path:
+    return _resolve_path(_ov["logs_path"]) if _ov["logs_path"] else get_settings().logs_path
+
+
+def set_repo_path(path: str) -> None:
+    _ov["repo_path"] = (path or "").strip()
+
+
+def set_logs_path(path: str) -> None:
+    _ov["logs_path"] = (path or "").strip()
+
+
+def reset() -> None:
+    """Revert every runtime override back to the .env defaults."""
+    for k in _ov:
+        _ov[k] = ""

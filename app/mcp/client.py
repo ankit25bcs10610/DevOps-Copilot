@@ -15,7 +15,6 @@ from langchain_core.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from app import runtime
-from app.config import get_settings
 
 
 def _server_config() -> dict:
@@ -25,20 +24,19 @@ def _server_config() -> dict:
     current Python interpreter and forward the relevant paths via env so the
     servers read the same data the app is configured with.
     """
-    settings = get_settings()
     py = sys.executable
     return {
         "logs-metrics": {
             "command": py,
             "args": ["-m", "app.mcp.servers.logs_metrics.server"],
             "transport": "stdio",
-            "env": {"LOGS_DATA_PATH": str(settings.logs_path)},
+            "env": {"LOGS_DATA_PATH": str(runtime.logs_path())},
         },
         "repo": {
             "command": py,
             "args": ["-m", "app.mcp.servers.repo.server"],
             "transport": "stdio",
-            "env": {"TARGET_REPO_PATH": str(settings.repo_path)},
+            "env": {"TARGET_REPO_PATH": str(runtime.repo_path())},
         },
         "github": {
             "command": py,
