@@ -12,7 +12,8 @@
   --faint: #5d6c91;
 
   position: relative;
-  background: var(--bg);
+  z-index: 1;
+  background: transparent;
   color: var(--txt);
   font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;

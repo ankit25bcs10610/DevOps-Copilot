@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
+import { AmbientBackground } from "./components/AmbientBackground";
 import { Composer } from "./components/Composer";
 import { Header } from "./components/Header";
 import { Icon } from "./components/Icon";
@@ -65,9 +66,14 @@ function Console({ onHome }: { onHome: () => void }) {
 
 export default function App() {
   const [view, setView] = useState<"landing" | "console">("landing");
-  return view === "landing" ? (
-    <Landing onLaunch={() => setView("console")} />
-  ) : (
-    <Console onHome={() => setView("landing")} />
+  return (
+    <>
+      <AmbientBackground />
+      {view === "landing" ? (
+        <Landing onLaunch={() => setView("console")} />
+      ) : (
+        <Console onHome={() => setView("landing")} />
+      )}
+    </>
   );
 }
