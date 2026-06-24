@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Literal
 
-from app.config import get_settings
 from app.graph.state import AgentState
 from app.mcp.client import WRITE_TOOLS
 
@@ -12,18 +11,15 @@ from app.mcp.client import WRITE_TOOLS
 def route_after_agent(state: AgentState) -> Literal["approval", "tools", "reflect"]:
     """Decide what happens after the agent speaks.
 
-    - iteration cap reached            -> reflect (terminates the run)
-    - tool calls that include a WRITE  -> human approval first
+    - tool calls that include a WRITE  -> human approval first (never bypassed)
     - tool calls that are all reads     -> execute immediately
     - no tool calls (a final answer)    -> reflect on completeness
 
-    The cap check is what actually bounds the agent<->tools hot loop: without
-    it, a model that keeps calling read tools would never reach reflect.
+    The iteration cap is enforced in agent_node (it stops calling tools at the
+    cap), so tool_calls here are always meant to run — never strand them.
     """
     last = state["messages"][-1]
     tool_calls = getattr(last, "tool_calls", None)
-    if state.get("iteration", 0) >= get_settings().copilot_max_iterations:
-        return "reflect"
     if not tool_calls:
         return "reflect"
     if any(call["name"] in WRITE_TOOLS for call in tool_calls):

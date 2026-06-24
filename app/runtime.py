@@ -107,9 +107,22 @@ def set_logs_path(path: str) -> None:
     _ov["logs_path"] = (path or "").strip()
 
 
+_MODEL_KEYS = ("provider", "anthropic_key", "groq_key", "model", "fast_model")
+
+
+def model_snapshot() -> dict[str, str]:
+    """Capture the model/provider overrides so a failed change can be rolled back."""
+    return {k: _ov[k] for k in _MODEL_KEYS}
+
+
+def restore_model(snap: dict[str, str]) -> None:
+    for k in _MODEL_KEYS:
+        _ov[k] = snap.get(k, "")
+
+
 def reset_model() -> None:
     """Revert only the model/provider overrides (leave github + sources intact)."""
-    for k in ("provider", "anthropic_key", "groq_key", "model", "fast_model"):
+    for k in _MODEL_KEYS:
         _ov[k] = ""
 
 

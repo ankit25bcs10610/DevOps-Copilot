@@ -107,7 +107,15 @@ def _describe(node: str, update: Any) -> str:
 
 
 def _last_ai_text(messages: list) -> str:
+    # Prefer the last tool-call-free assistant message (a real final answer).
     for msg in reversed(messages):
         if isinstance(msg, AIMessage) and not msg.tool_calls:
+            text = msg.content if isinstance(msg.content, str) else str(msg.content)
+            if text.strip():
+                return text
+    # Fallback: last assistant message with any text (even if it had tool_calls),
+    # so a run that ended on a tool-calling message still surfaces something.
+    for msg in reversed(messages):
+        if isinstance(msg, AIMessage) and msg.content:
             return msg.content if isinstance(msg.content, str) else str(msg.content)
     return "(no final answer produced)"

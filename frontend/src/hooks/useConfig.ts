@@ -39,12 +39,13 @@ function ensureStarted() {
       emit();
     } catch {
       tries += 1;
-      if (tries <= 10) {
-        setTimeout(attempt, 3000); // recover if the backend wasn't up yet
-      } else {
+      // Show "offline" after a few quick tries, but keep retrying forever
+      // (slower) so a backend that starts late auto-recovers — no reload needed.
+      if (tries >= 3) {
         _failed = true;
         emit();
       }
+      setTimeout(attempt, tries <= 10 ? 3000 : 10000);
     }
   };
   attempt();

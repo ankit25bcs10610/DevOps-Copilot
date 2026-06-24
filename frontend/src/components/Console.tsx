@@ -83,7 +83,7 @@ function TopBar({ onHome }: { onHome: () => void }) {
           <span className="status__label">{label}</span>
         </span>
         <ThemePicker />
-        <span className="cns-avatar">A</span>
+        <span className="cns-avatar" aria-label="Account">A</span>
       </div>
     </header>
   );
@@ -111,7 +111,9 @@ export function Console({ onHome }: { onHome: () => void }) {
             <div className="cns-scroll">
               <div className="welcome">
                 <div className="welcome__text">
-                  <p className="welcome__greet">{greeting()}, Alex! 👋</p>
+                  <p className="welcome__greet">
+                    {greeting()}, Alex! <span aria-hidden="true">👋</span>
+                  </p>
                   <h1 className="welcome__title">Investigate a production incident</h1>
                   <p className="welcome__sub">
                     Ask a question and DevOps Copilot will pull logs &amp; metrics, read the code,
@@ -143,9 +145,7 @@ export function Console({ onHome }: { onHome: () => void }) {
               </div>
 
               <div className="suggest-card">
-                <div className="suggest-card__head">
-                  <span>Suggested questions</span>
-                </div>
+                <h2 className="suggest-card__head">Suggested questions</h2>
                 <div className="suggest-grid">
                   {SUGGESTIONS.map((q) => (
                     <button

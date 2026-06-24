@@ -15,11 +15,16 @@ const PURPLE = "#7C5CFF";
 const CYAN = "#00D4FF";
 const MINT = "#00FFB3";
 
+// Honor reduced-motion: freeze the scene's animations and auto-rotation.
+const REDUCED =
+  typeof window !== "undefined" &&
+  window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
 /** Transparent holographic crystal cube (glassmorphism, refraction). */
 function CrystalCube() {
   const ref = useRef<THREE.Mesh>(null);
   useFrame((s) => {
-    if (!ref.current) return;
+    if (!ref.current || REDUCED) return;
     const t = s.clock.elapsedTime;
     ref.current.rotation.y = t * 0.25;
     ref.current.rotation.x = Math.sin(t * 0.3) * 0.15;
@@ -50,6 +55,7 @@ function NeuralCore() {
   const solid = useRef<THREE.Mesh>(null);
   const wire = useRef<THREE.Mesh>(null);
   useFrame((s) => {
+    if (REDUCED) return;
     const t = s.clock.elapsedTime;
     const pulse = 1 + Math.sin(t * 2.2) * 0.07;
     if (solid.current) {
@@ -96,7 +102,7 @@ function HexRing({
 }) {
   const ref = useRef<THREE.Mesh>(null);
   useFrame((s) => {
-    if (ref.current) ref.current.rotation.z = s.clock.elapsedTime * speed;
+    if (ref.current && !REDUCED) ref.current.rotation.z = s.clock.elapsedTime * speed;
   });
   return (
     <mesh ref={ref} rotation={tilt}>
@@ -129,7 +135,7 @@ function Particles({ count = 450 }: { count?: number }) {
     return a;
   }, [count]);
   useFrame((s) => {
-    if (ref.current) ref.current.rotation.y = s.clock.elapsedTime * 0.045;
+    if (ref.current && !REDUCED) ref.current.rotation.y = s.clock.elapsedTime * 0.045;
   });
   return (
     <points ref={ref}>
@@ -226,7 +232,7 @@ function Scene() {
         enableZoom={false}
         enablePan={false}
         enableRotate={false}
-        autoRotate
+        autoRotate={!REDUCED}
         autoRotateSpeed={0.5}
       />
     </>

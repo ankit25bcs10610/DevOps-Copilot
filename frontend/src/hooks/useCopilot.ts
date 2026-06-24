@@ -76,17 +76,16 @@ export function useCopilot() {
   /** Approve or reject the pending write action on a given turn. */
   const respond = useCallback(
     async (turnId: string, approved: boolean, reason = "") => {
-      patch(turnId, { status: "thinking", approval: null });
+      // Keep `approval` in state (the card just hides while status is "thinking")
+      // so we can restore it intact if the resume fails.
+      patch(turnId, { status: "thinking" });
       setBusy(true);
       try {
         const res = await api.approve(threadId, approved, reason);
         applyResponse(turnId, res);
-      } catch (e) {
-        // Don't leave the turn stuck on the spinner — show the error.
-        patch(turnId, {
-          status: "error",
-          text: e instanceof Error ? e.message : String(e),
-        });
+      } catch {
+        // Restore the approval gate so the user can review/retry — no context lost.
+        patch(turnId, { status: "awaiting_approval" });
       } finally {
         setBusy(false);
       }

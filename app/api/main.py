@@ -55,6 +55,9 @@ _SESSIONS: dict[str, CopilotSession] = {}
 # Serializes session creation so concurrent first requests for the same thread
 # don't each spin up (and leak) a session.
 _SESSION_LOCK = asyncio.Lock()
+# Serializes agent turns against config-driven eviction, so a /model, /sources,
+# /github or /reset change can't tear a session down mid-run.
+_RUN_LOCK = asyncio.Lock()
 
 
 async def _evict(thread_id: str) -> None:
@@ -68,9 +71,11 @@ async def _evict(thread_id: str) -> None:
 
 
 async def _evict_all() -> None:
-    """Drop every session so future ones rebuild MCP with current credentials."""
-    for thread_id in list(_SESSIONS):
-        await _evict(thread_id)
+    """Drop every session so future ones rebuild MCP with current credentials.
+    Holds _RUN_LOCK so it never tears a session down mid-turn."""
+    async with _RUN_LOCK:
+        for thread_id in list(_SESSIONS):
+            await _evict(thread_id)
 
 
 def _github_status() -> dict:
@@ -259,10 +264,11 @@ async def model_configure(req: ModelConfigRequest) -> dict:
     if provider not in {"anthropic", "groq"}:
         raise HTTPException(400, "provider must be 'anthropic' or 'groq'")
 
+    snapshot = runtime.model_snapshot()
     runtime.set_model(provider, req.api_key, req.model, req.fast_model)
     if not active_api_key():
-        # Revert ONLY the model fields — keep github/source overrides intact.
-        runtime.reset_model()
+        # Roll back to the PRIOR working config (not .env), keeping other overrides.
+        runtime.restore_model(snapshot)
         raise HTTPException(400, f"An API key is required for '{provider}'.")
 
     await _evict_all()  # rebuild sessions so the new model/key is used
@@ -322,7 +328,8 @@ async def chat(req: ChatRequest) -> ChatResponse:
     existed = req.thread_id in _SESSIONS
     session = await _get_session(req.thread_id, create=True)
     try:
-        result = await session.ask(req.message)
+        async with _RUN_LOCK:
+            result = await session.ask(req.message)
     except Exception as exc:  # noqa: BLE001 — surface a clean error to the UI
         # If this session was just created and its first turn failed, drop it so
         # a retry rebuilds cleanly instead of reusing a half-initialized session.
@@ -338,7 +345,8 @@ async def chat(req: ChatRequest) -> ChatResponse:
 async def approve(req: ApproveRequest) -> ChatResponse:
     session = await _get_session(req.thread_id, create=False)
     try:
-        result = await session.resume(approved=req.approved, reason=req.reason)
+        async with _RUN_LOCK:
+            result = await session.resume(approved=req.approved, reason=req.reason)
     except Exception as exc:  # noqa: BLE001
         return ChatResponse(
             thread_id=req.thread_id, status="error", answer=_friendly_error(exc)

@@ -45,17 +45,32 @@ def make_agent_node(tools):
     """Node: the reasoning loop. Binds tools and lets Claude decide the next
     action (call a tool) or produce a final answer (no tool calls).
 
-    Every agent call increments `iteration`. This is the counter that actually
-    bounds the agent<->tools hot loop (route_after_agent forces termination once
-    it reaches copilot_max_iterations), so the agent can't spin forever.
+    Every agent call increments `iteration`. Once the cap is reached the agent
+    is invoked WITHOUT tools and told to give its final answer — this bounds the
+    agent<->tools hot loop while guaranteeing the run never ends on a message
+    with unexecuted tool_calls (which would corrupt history / 400 on Anthropic).
     """
-    llm = get_llm().bind_tools(tools)
+    settings = get_settings()
+    llm_tools = get_llm().bind_tools(tools)
+    llm_plain = get_llm()  # no tools — used to force a final answer at the cap
 
     def agent_node(state: AgentState) -> dict:
+        iteration = state.get("iteration", 0) + 1
         plan_text = "\n".join(state.get("plan", [])) or "(no explicit plan)"
-        system = SystemMessage(content=AGENT_SYSTEM.format(plan=plan_text))
-        resp = llm.invoke([system, *state["messages"]])
-        return {"messages": [resp], "iteration": state.get("iteration", 0) + 1}
+        at_cap = iteration >= settings.copilot_max_iterations
+
+        if at_cap:
+            system = SystemMessage(
+                content=AGENT_SYSTEM.format(plan=plan_text)
+                + "\n\nYou have reached the investigation step limit. Do NOT call "
+                "any tools. Summarize the root cause and your recommendation now."
+            )
+            resp = llm_plain.invoke([system, *state["messages"]])
+        else:
+            system = SystemMessage(content=AGENT_SYSTEM.format(plan=plan_text))
+            resp = llm_tools.invoke([system, *state["messages"]])
+
+        return {"messages": [resp], "iteration": iteration}
 
     return agent_node
 

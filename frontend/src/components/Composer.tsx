@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { Icon } from "./Icon";
 
@@ -9,26 +9,38 @@ interface Props {
 
 export function Composer({ disabled, onSend }: Props) {
   const [value, setValue] = useState("");
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  const autoGrow = (el: HTMLTextAreaElement) => {
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  };
 
   const submit = () => {
     const text = value.trim();
     if (!text || disabled) return;
     onSend(text);
     setValue("");
+    if (ref.current) ref.current.style.height = "auto";
   };
 
   return (
     <div className="composer">
       <textarea
+        ref={ref}
         className="composer__field"
         rows={1}
         aria-label="Ask about an incident"
         placeholder="Ask about an incident…"
         value={value}
         disabled={disabled}
-        onChange={(e) => setValue(e.target.value)}
+        onChange={(e) => {
+          setValue(e.target.value);
+          autoGrow(e.target);
+        }}
         onKeyDown={(e) => {
-          if (e.key === "Enter" && !e.shiftKey) {
+          // Cmd/Ctrl+Enter sends (matches the hint); plain Enter inserts a newline.
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
             e.preventDefault();
             submit();
           }
