@@ -6,8 +6,14 @@ import type { AppConfig } from "../types";
 // Module-level cache so Header + Sidebar share a single /config request.
 let cache: Promise<AppConfig> | null = null;
 
-export function useConfig(): AppConfig | null {
-  const [cfg, setCfg] = useState<AppConfig | null>(null);
+export interface ConfigState {
+  config: AppConfig | null;
+  failed: boolean; // true once retries are exhausted (backend unreachable)
+}
+
+export function useConfig(): ConfigState {
+  const [config, setConfig] = useState<AppConfig | null>(null);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -16,11 +22,19 @@ export function useConfig(): AppConfig | null {
     const attempt = (retriesLeft: number) => {
       if (!cache) cache = getConfig();
       cache
-        .then((c) => active && setCfg(c))
+        .then((c) => {
+          if (active) {
+            setConfig(c);
+            setFailed(false);
+          }
+        })
         .catch(() => {
           cache = null; // drop the rejected promise so the next attempt refetches
-          if (active && retriesLeft > 0) {
+          if (!active) return;
+          if (retriesLeft > 0) {
             timer = setTimeout(() => attempt(retriesLeft - 1), 3000);
+          } else {
+            setFailed(true); // give up → let the UI show an offline state
           }
         });
     };
@@ -32,7 +46,7 @@ export function useConfig(): AppConfig | null {
     };
   }, []);
 
-  return cfg;
+  return { config, failed };
 }
 
 export const providerLabel = (p?: string) =>

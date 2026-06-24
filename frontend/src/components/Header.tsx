@@ -6,7 +6,7 @@ import { Icon } from "./Icon";
 import { ThemePicker } from "./ThemePicker";
 
 export function Header() {
-  const cfg = useConfig();
+  const { config: cfg } = useConfig();
   const [online, setOnline] = useState<boolean | null>(null);
 
   useEffect(() => {

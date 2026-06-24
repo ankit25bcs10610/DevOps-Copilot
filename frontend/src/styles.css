@@ -194,6 +194,9 @@ input {
   font-size: 12px;
   color: var(--text-faint);
 }
+.side-skel--offline {
+  color: var(--bad);
+}
 .model-card {
   background: var(--panel);
   border: 1px solid var(--border-soft);

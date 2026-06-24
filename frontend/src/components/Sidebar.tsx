@@ -17,7 +17,8 @@ const SERVER_ICON: Record<string, string> = {
 };
 
 export function Sidebar() {
-  const cfg = useConfig();
+  const { config: cfg, failed } = useConfig();
+  const placeholder = failed ? "Backend offline — start the API" : "Connecting…";
 
   return (
     <aside className="sidebar">
@@ -39,7 +40,9 @@ export function Sidebar() {
             </div>
           </div>
         ) : (
-          <div className="side-skel">loading…</div>
+          <div className={`side-skel${failed ? " side-skel--offline" : ""}`}>
+            {placeholder}
+          </div>
         )}
       </section>
 
@@ -48,6 +51,7 @@ export function Sidebar() {
           MCP Servers{cfg ? ` · ${cfg.servers.length}` : ""}
         </h3>
         <div className="servers">
+          {!cfg && <div className="side-skel">{placeholder}</div>}
           {(cfg?.servers ?? []).map((s) => (
             <div key={s.name} className="server">
               <div className="server__head">
