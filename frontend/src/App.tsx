@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
-import { AmbientBackground } from "./components/AmbientBackground";
 import { Composer } from "./components/Composer";
 import { Header } from "./components/Header";
+import { Hero3D } from "./components/Hero3D";
 import { Icon } from "./components/Icon";
 import { Landing } from "./components/Landing";
 import { Message } from "./components/Message";
@@ -68,7 +68,8 @@ export default function App() {
   const [view, setView] = useState<"landing" | "console">("landing");
   return (
     <>
-      <AmbientBackground />
+      {/* One persistent 3D command-center backdrop behind every view. */}
+      <Hero3D />
       {view === "landing" ? (
         <Landing onLaunch={() => setView("console")} />
       ) : (

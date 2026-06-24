@@ -1,7 +1,6 @@
 import "./landing.css";
 
 import { modelShort, providerLabel, useConfig } from "../hooks/useConfig";
-import { Hero3D } from "./Hero3D";
 import { Icon } from "./Icon";
 
 const PIPELINE = [
@@ -59,9 +58,6 @@ export function Landing({ onLaunch }: { onLaunch: () => void }) {
 
       {/* ---- Hero ---- */}
       <section className="hero">
-        <div className="hero__canvas">
-          <Hero3D />
-        </div>
         <div className="hero__overlay">
           <span className="hero__eyebrow">
             <span className="pulse-dot" /> Autonomous AI Operations · LangGraph · MCP
@@ -97,7 +93,7 @@ export function Landing({ onLaunch }: { onLaunch: () => void }) {
             </div>
           </div>
         </div>
-        <div className="hero__hint">drag to orbit · scroll to explore</div>
+        <div className="hero__hint">scroll to explore</div>
       </section>
 
       {/* ---- Bento dashboard ---- */}

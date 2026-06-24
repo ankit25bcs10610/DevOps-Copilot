@@ -221,13 +221,13 @@ function Scene() {
         <Bloom intensity={1.25} luminanceThreshold={0.18} luminanceSmoothing={0.6} mipmapBlur />
       </EffectComposer>
 
+      {/* Non-interactive: it's a global background, so it never captures input. */}
       <OrbitControls
         enableZoom={false}
         enablePan={false}
+        enableRotate={false}
         autoRotate
-        autoRotateSpeed={0.55}
-        minPolarAngle={Math.PI / 3.2}
-        maxPolarAngle={Math.PI / 1.9}
+        autoRotateSpeed={0.5}
       />
     </>
   );

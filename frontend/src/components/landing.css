@@ -121,24 +121,6 @@
   min-height: 680px;
   width: 100%;
 }
-.hero__canvas {
-  position: absolute;
-  inset: 0;
-}
-.hero3d {
-  width: 100%;
-  height: 100%;
-}
-.hero3d canvas {
-  display: block;
-}
-.hero3d__fallback {
-  width: 100%;
-  height: 100%;
-  background:
-    radial-gradient(60% 50% at 50% 45%, rgba(124, 92, 255, 0.35), transparent 70%),
-    radial-gradient(40% 40% at 60% 60%, rgba(0, 212, 255, 0.25), transparent 70%), var(--bg);
-}
 .hero__overlay {
   position: absolute;
   inset: 0;
@@ -150,7 +132,25 @@
   text-align: center;
   padding: 0 20px;
   pointer-events: none;
-  background: radial-gradient(70% 60% at 50% 50%, transparent 40%, rgba(5, 8, 22, 0.55) 100%);
+  background: radial-gradient(70% 60% at 50% 50%, transparent 40%, rgba(5, 8, 22, 0.5) 100%);
+}
+/* Focused scrim behind the text block so it stays readable over the bright 3D. */
+.hero__overlay::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(1060px, 94vw);
+  height: 620px;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(5, 8, 22, 0.74) 0%,
+    rgba(5, 8, 22, 0.46) 42%,
+    transparent 72%
+  );
+  filter: blur(8px);
+  pointer-events: none;
 }
 .hero__eyebrow {
   display: inline-flex;
@@ -189,13 +189,15 @@
   font-weight: 800;
   letter-spacing: -0.02em;
   text-shadow: 0 8px 50px rgba(124, 92, 255, 0.35);
+  filter: drop-shadow(0 6px 26px rgba(5, 8, 22, 0.85));
 }
 .hero__subtitle {
   margin: 0;
   max-width: 560px;
   font-size: clamp(15px, 2vw, 19px);
-  color: var(--dim);
+  color: #cdd8f5;
   line-height: 1.5;
+  text-shadow: 0 2px 14px rgba(5, 8, 22, 0.9);
 }
 .hero__cta {
   display: flex;
@@ -219,12 +221,14 @@
 .hero__stats strong {
   font-size: 24px;
   font-weight: 700;
+  text-shadow: 0 2px 12px rgba(5, 8, 22, 0.9);
 }
 .hero__stats span {
   font-size: 12px;
-  color: var(--faint);
+  color: var(--dim);
   text-transform: uppercase;
   letter-spacing: 0.06em;
+  text-shadow: 0 1px 8px rgba(5, 8, 22, 0.9);
 }
 .hero__hint {
   position: absolute;
@@ -235,7 +239,8 @@
   font-size: 11.5px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--faint);
+  color: var(--dim);
+  text-shadow: 0 1px 8px rgba(5, 8, 22, 0.9);
 }
 
 /* ---- Sections ---- */

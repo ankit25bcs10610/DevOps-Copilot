@@ -127,6 +127,24 @@ input {
   font-family: inherit;
 }
 
+/* ---- Persistent 3D command-center backdrop (behind every view) ---- */
+.hero3d {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+.hero3d canvas {
+  display: block;
+}
+.hero3d__fallback {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(60% 50% at 50% 45%, rgba(124, 92, 255, 0.35), transparent 70%),
+    radial-gradient(40% 40% at 60% 60%, rgba(0, 212, 255, 0.25), transparent 70%), #050816;
+}
+
 /* ---- App-wide ambient backdrop (behind every view) ---- */
 .ambient {
   position: fixed;
