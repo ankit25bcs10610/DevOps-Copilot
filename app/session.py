@@ -35,8 +35,8 @@ class CopilotSession:
     def __init__(self, thread_id: str = "default"):
         self.thread_id = thread_id
         self._stack = AsyncExitStack()
-        self._graph = None
-        self._mcp_client = None
+        self._graph: Any = None  # compiled LangGraph, built in __aenter__
+        self._mcp_client: Any = None
 
     async def __aenter__(self) -> "CopilotSession":
         try:
@@ -93,8 +93,9 @@ class CopilotSession:
 
     async def resume_stream(self, approved: bool, reason: str = "") -> AsyncIterator[dict]:
         """Like resume(), but yields progress events as they happen (for SSE)."""
-        decision = Command(resume={"approved": approved, "reason": reason})
-        async for ev in self._drive_events(decision):
+        async for ev in self._drive_events(
+            Command(resume={"approved": approved, "reason": reason})
+        ):
             yield ev
 
     async def _drive_events(self, graph_input: Any) -> AsyncIterator[dict]:

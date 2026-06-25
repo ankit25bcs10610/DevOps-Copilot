@@ -87,8 +87,9 @@ def get_llm(fast: bool = False, model: str | None = None) -> BaseChatModel:
 
     if provider == "groq":
         from langchain_groq import ChatGroq
+        from pydantic import SecretStr
 
-        return ChatGroq(model=model, api_key=key, temperature=0.0, max_tokens=4096)
+        return ChatGroq(model=model, api_key=SecretStr(key), temperature=0.0, max_tokens=4096)
 
     if provider == "openai":
         mod = _require("langchain_openai", "OpenAI")

@@ -46,6 +46,7 @@ dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
     "ruff>=0.7.0",
+    "mypy>=1.11.0",
 ]
 
 [project.scripts]
@@ -61,6 +62,11 @@ packages = ["app"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true   # third-party stubs (langchain/langgraph/mcp) absent
+# Pragmatic: type-check our own code without demanding full strictness.
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
