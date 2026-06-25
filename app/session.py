@@ -29,6 +29,8 @@ class TurnResult:
     trace: list[str] = field(default_factory=list)
     # Structured RCA deliverable, present once an investigation completes.
     report: dict | None = None
+    # Total LLM tokens spent on this turn (for cost visibility in the UI).
+    tokens_used: int = 0
 
 
 class CopilotSession:
@@ -144,7 +146,14 @@ class CopilotSession:
         snapshot = await self._graph.aget_state(self._config)
         final_text = _last_ai_text(snapshot.values.get("messages", []))
         report = snapshot.values.get("report")
-        yield {"type": "done", "final_text": final_text, "trace": list(trace), "report": report}
+        tokens = snapshot.values.get("tokens_used", 0)
+        yield {
+            "type": "done",
+            "final_text": final_text,
+            "trace": list(trace),
+            "report": report,
+            "tokens_used": tokens,
+        }
 
     async def _drive(self, graph_input: Any) -> TurnResult:
         """Run a turn to completion, collapsing the event stream into one result."""
@@ -164,6 +173,7 @@ class CopilotSession:
                 final_text=last["final_text"],
                 trace=last["trace"],
                 report=last.get("report"),
+                tokens_used=last.get("tokens_used", 0),
             )
         return TurnResult(status="completed", final_text="(no final answer produced)")
 

@@ -1868,3 +1868,12 @@ input {
   transition: border-color 0.15s ease, background 0.15s ease;
 }
 .rca__dl:hover { border-color: var(--accent); background: var(--accent-soft); }
+
+.turn-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--text-faint);
+}

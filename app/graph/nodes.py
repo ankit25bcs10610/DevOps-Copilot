@@ -21,21 +21,34 @@ from app.mcp.client import WRITE_TOOLS
 log = logging.getLogger("devcopilot.agent")
 
 
-def _log_usage(node: str, resp) -> None:
+def _log_usage(node: str, resp) -> int:
     """Log per-call LLM token usage so cost is observable (carries the request-id
-    via the logging filter). usage_metadata is absent on some providers — skip then."""
+    via the logging filter) and RETURN this call's total tokens so the node can
+    add it to the run budget. usage_metadata is absent on some providers — 0 then."""
     um = getattr(resp, "usage_metadata", None)
     if not um:
-        return
+        return 0
     details = um.get("input_token_details") or {}
+    total = um.get("total_tokens") or 0
     log.info(
         "llm_usage node=%s input=%s output=%s total=%s cache_read=%s",
         node,
         um.get("input_tokens"),
         um.get("output_tokens"),
-        um.get("total_tokens"),
+        total,
         details.get("cache_read"),
     )
+    try:
+        return int(total)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _over_token_budget(tokens_used: int, settings) -> bool:
+    """True when the run has spent its per-investigation token budget (0 = off).
+    Pure so the cost kill-switch logic is unit-testable without an LLM."""
+    cap = settings.copilot_max_tokens_per_run
+    return bool(cap) and tokens_used >= cap
 
 
 def _last_user_text(state: AgentState) -> str:
@@ -82,9 +95,15 @@ def make_plan_node():
         resp = llm.invoke(
             [SystemMessage(content=PLANNER_SYSTEM), HumanMessage(content=human)]
         )
-        _log_usage("plan", resp)
+        tokens = _log_usage("plan", resp)
         plan = [ln.strip() for ln in str(resp.content).splitlines() if ln.strip()]
-        return {"plan": plan, "iteration": 0, "status": "investigating", "feedback": ""}
+        return {
+            "plan": plan,
+            "iteration": 0,
+            "status": "investigating",
+            "feedback": "",
+            "tokens_used": tokens,
+        }
 
     return plan_node
 
@@ -106,13 +125,17 @@ def make_agent_node(tools):
         iteration = state.get("iteration", 0) + 1
         plan_text = "\n".join(state.get("plan", [])) or "(no explicit plan)"
         feedback = state.get("feedback", "")
-        at_cap = iteration >= settings.copilot_max_iterations
+        # Force a final answer at EITHER the step cap or the token-budget ceiling —
+        # both stop the agent<->tools loop without stranding tool calls.
+        over_budget = _over_token_budget(state.get("tokens_used", 0), settings)
+        at_cap = iteration >= settings.copilot_max_iterations or over_budget
 
         if at_cap:
+            limit = "token budget" if over_budget else "investigation step limit"
             system = SystemMessage(
                 content=AGENT_SYSTEM.format(plan=plan_text)
-                + "\n\nYou have reached the investigation step limit. Do NOT call "
-                "any tools. Summarize the root cause and your recommendation now."
+                + f"\n\nYou have reached the {limit}. Do NOT call any tools. "
+                "Summarize the root cause and your recommendation now."
             )
             resp = llm_plain.invoke([system, *state["messages"]])
         else:
@@ -126,8 +149,8 @@ def make_agent_node(tools):
                 )
             resp = llm_tools.invoke([SystemMessage(content=base), *state["messages"]])
 
-        _log_usage("agent", resp)
-        return {"messages": [resp], "iteration": iteration}
+        tokens = _log_usage("agent", resp)
+        return {"messages": [resp], "iteration": iteration, "tokens_used": tokens}
 
     return agent_node
 
@@ -189,8 +212,11 @@ def make_reflect_node():
     settings = get_settings()
 
     def reflect_node(state: AgentState) -> dict:
-        # `iteration` is incremented in agent_node; reflect only reads it.
-        if state.get("iteration", 0) >= settings.copilot_max_iterations:
+        # `iteration` is incremented in agent_node; reflect only reads it. Also
+        # stop reflecting once the token budget is spent — go straight to report.
+        if state.get("iteration", 0) >= settings.copilot_max_iterations or _over_token_budget(
+            state.get("tokens_used", 0), settings
+        ):
             return {"status": "done", "feedback": ""}
 
         request = _last_user_text(state)
@@ -210,15 +236,15 @@ def make_reflect_node():
                 ),
             ]
         )
-        _log_usage("reflect", resp)
+        tokens = _log_usage("reflect", resp)
         text = str(resp.content).strip()
         if text.upper().startswith("DONE"):
-            return {"status": "done", "feedback": ""}
+            return {"status": "done", "feedback": "", "tokens_used": tokens}
         # CONTINUE — capture the gap note (everything after the verdict word) so
         # the next agent pass closes it instead of re-emitting the same answer.
         rest = text[len("CONTINUE"):] if text.upper().startswith("CONTINUE") else text
         feedback = rest.lstrip(" :\n-").strip()[:500]
-        return {"status": "investigating", "feedback": feedback}
+        return {"status": "investigating", "feedback": feedback, "tokens_used": tokens}
 
     return reflect_node
 
@@ -409,14 +435,15 @@ def make_report_node():
             f"Agent's final answer:\n{final_answer}\n\n"
             f"Evidence gathered (tool calls + results):\n{digest or '(none recorded)'}"
         )
+        tokens = 0
         try:
             resp = llm.invoke([SystemMessage(content=REPORT_SYSTEM), HumanMessage(content=human)])
-            _log_usage("report", resp)
+            tokens = _log_usage("report", resp)
             report = _parse_report(str(resp.content), fallback_summary=final_answer)
         except Exception:  # noqa: BLE001 — reporting must never break a finished run
             log.exception("report synthesis failed; using fallback report")
             report = _parse_report("", fallback_summary=final_answer)
         report["postmortem"] = _render_postmortem(report, request)
-        return {"report": report, "status": "done"}
+        return {"report": report, "status": "done", "tokens_used": tokens}
 
     return report_node

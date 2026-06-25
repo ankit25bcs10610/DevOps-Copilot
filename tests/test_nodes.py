@@ -1,15 +1,19 @@
 """Pure helpers in the graph nodes (the LLM-driven nodes need a key, so we test
 the deterministic logic around them)."""
 
+from types import SimpleNamespace
+
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from app.graph.nodes import (
     _coerce_str_list,
     _evidence_digest,
     _history_digest,
+    _over_token_budget,
     _parse_report,
     _render_postmortem,
 )
+from app.graph.state import _add_int
 
 
 def test_history_digest_keeps_prior_qa_drops_tools_and_current_request():
@@ -106,6 +110,22 @@ def test_render_postmortem_includes_key_sections():
     assert "## Recommended actions" in md
     assert "- [ ] Guard coupon" in md
     assert "Blameless by design" in md
+
+
+def test_add_int_reducer_treats_missing_as_zero():
+    assert _add_int(None, 5) == 5
+    assert _add_int(10, 7) == 17
+    assert _add_int(3, None) == 3
+    assert _add_int(None, None) == 0
+
+
+def test_over_token_budget_kill_switch():
+    off = SimpleNamespace(copilot_max_tokens_per_run=0)
+    assert _over_token_budget(10_000, off) is False  # 0 = unlimited
+    capped = SimpleNamespace(copilot_max_tokens_per_run=1000)
+    assert _over_token_budget(999, capped) is False
+    assert _over_token_budget(1000, capped) is True
+    assert _over_token_budget(5000, capped) is True
 
 
 def test_evidence_digest_collects_tool_output():

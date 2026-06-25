@@ -361,6 +361,8 @@ class ChatResponse(BaseModel):
     # Structured RCA deliverable (ranked hypotheses, evidence, severity,
     # postmortem), present once an investigation completes.
     report: dict | None = None
+    # Total LLM tokens spent on this turn (cost visibility).
+    tokens_used: int = 0
 
 
 def _friendly_error(exc: Exception) -> str:
@@ -397,6 +399,7 @@ def _to_response(thread_id: str, result: TurnResult) -> ChatResponse:
         approval_request=result.approval_request,
         trace=result.trace,
         report=result.report,
+        tokens_used=result.tokens_used,
     )
 
 
@@ -685,6 +688,7 @@ def _stream_payload(thread_id: str, ev: dict) -> dict:
             answer=ev["final_text"],
             trace=ev["trace"],
             report=ev.get("report"),
+            tokens_used=ev.get("tokens_used", 0),
         )
     return out
 

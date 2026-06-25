@@ -64,6 +64,13 @@ export function Message({ turn, onDecision, onRetry }: Props) {
         {turn.status === "completed" && turn.report && (
           <RcaReportCard report={turn.report} />
         )}
+
+        {turn.status === "completed" && !!turn.tokensUsed && (
+          <div className="turn-meta" title="Total LLM tokens spent on this investigation">
+            <Icon name="cpu" size={12} />
+            <span>{turn.tokensUsed.toLocaleString()} tokens</span>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -57,6 +57,7 @@ export interface StreamEvent {
   approval_request?: ApprovalRequest | null;
   trace?: string[];
   report?: RcaReport | null;
+  tokens_used?: number;
 }
 
 // /metrics response (real series from the logs/metrics source).
@@ -108,4 +109,5 @@ export interface Turn {
   status: TurnStatus | "thinking";
   approval: ApprovalRequest | null;
   report?: RcaReport | null;
+  tokensUsed?: number;
 }

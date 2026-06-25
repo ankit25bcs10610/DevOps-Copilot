@@ -104,6 +104,10 @@ class Settings(BaseSettings):
     # --- Agent behavior ---
     # Max agent (LLM) calls per turn — bounds the agent<->tools loop.
     copilot_max_iterations: int = 8
+    # Token budget per investigation (sum of all LLM calls in a turn). When the
+    # running total crosses this, the agent is forced to conclude on its next step
+    # — a hard cost kill-switch on top of the iteration cap. 0 = unlimited.
+    copilot_max_tokens_per_run: int = 0
     copilot_checkpoint_db: str = "./copilot_checkpoints.sqlite"
 
     @field_validator("copilot_provider")
