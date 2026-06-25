@@ -11,7 +11,7 @@
 ![LangGraph](https://img.shields.io/badge/LangGraph-stateful%20agent-1C3C3C)
 ![MCP](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-7C5CFF)
 
-**LangGraph 5-node cyclic graph** · **3 custom MCP servers / 11 tools** · **5 LLM providers** · **45-test suite in CI** · **one Docker image (SPA + API)**
+**LangGraph 5-node cyclic graph** · **4 custom MCP servers / 14 tools** · **5 LLM providers** · **pytest suite in CI** · **one Docker image (SPA + API)**
 
 </div>
 
@@ -52,7 +52,7 @@ It is a full-stack reference implementation of a modern agentic system, with the
 | | |
 |---|---|
 | **Human approval before writes** | Any tool call that mutates state (`create_pull_request`) is forced through a resumable LangGraph `interrupt()`; the routing can't bypass it, and the gate is covered by tests. See [Human-in-the-loop](#human-in-the-loop-by-design). |
-| **Three custom MCP servers** | a **`datadog`** observability server (live Datadog API + offline fixtures), a **path-sandboxed** `repo` server, and a `github` server with **live API + offline-fixture** modes — all hand-built on FastMCP over stdio, discovered at runtime via `langchain-mcp-adapters`. |
+| **Four custom MCP servers** | a **`datadog`** observability server, a **`pagerduty`** alerting server, a **path-sandboxed** `repo` server, and a `github` server (PRs) — each with **live API + offline-fixture** modes, all hand-built on FastMCP over stdio and discovered at runtime via `langchain-mcp-adapters`. |
 | **Live SSE streaming** | `/chat/stream` and `/approve/stream` emit one event per graph step (`EventSourceResponse`), powering the live activity timeline and a **Stop** button that cancels the run server-side by disconnecting the stream. |
 | **5 LLM providers, switchable live** | Anthropic (Claude Opus 4.8), OpenAI, Gemini, Groq/Llama, DeepSeek — change provider, model, or key **from the UI with no restart**, validated server-side. Adaptive thinking runs only on the main Opus model. |
 | **Production-hardened** | Bearer auth, per-IP rate limiting, request caps, `/healthz` + `/readyz`, graceful shutdown, structured JSON logs with request-ids, and a fail-closed production config. See [Production hardening](#production-hardening). |
@@ -95,6 +95,7 @@ A React console with a live activity timeline, the human-in-the-loop approval ca
    │ get_metric           │                      │  create_pull_request (W)  │
    │ list_services        │                      │                           │
    └──────────────────────┴──────────────────────┴───────────────────────────┘
+   + pagerduty (alerting): list_incidents · get_incident · get_incident_alerts
 ```
 
 > The agent never imports a server directly — it only sees the tools each MCP server advertises. Full design notes in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
@@ -138,7 +139,7 @@ Every item below is in the code today (file references included so it's verifiab
 
 **Observability** — structured JSON logs in production (text in dev), each record carrying a request-id propagated end-to-end via a contextvar; per-LLM-call token-usage logging (input / output / cache-read) for cost visibility; optional LangSmith tracing. `app/observability.py`, `app/graph/nodes.py`
 
-**Testing &amp; CI** — a **45-test pytest suite** covering the write-approval routing, the fail-closed config validator, the repo path-traversal/symlink sandbox, per-provider key isolation, recursion-limit derivation, and the auth / rate-limit / body-cap middleware — all without needing an LLM key. CI (`.github/workflows/ci.yml`) runs **ruff + pytest** and a **full frontend typecheck (`tsc -b --force`) + Vite build** on every push and PR.
+**Testing &amp; CI** — a **49-test pytest suite** covering the write-approval routing, the fail-closed config validator, the repo path-traversal/symlink sandbox, per-provider key isolation, recursion-limit derivation, and the auth / rate-limit / body-cap middleware — all without needing an LLM key. CI (`.github/workflows/ci.yml`) runs **ruff + pytest** and a **full frontend typecheck (`tsc -b --force`) + Vite build** on every push and PR.
 
 **Accessibility** — `prefers-reduced-motion` support (pauses the 3D render loop, static fallback), ARIA roles/labels and a screen-reader live region for the streaming trace, a skip-to-content link, WCAG-AA-checked contrast, and a cancellable Stop control with conversation persistence across reloads. `frontend/src/`
 

@@ -47,6 +47,17 @@ class Settings(BaseSettings):
     dd_api_key: str = ""
     dd_app_key: str = ""
     dd_site: str = "datadoghq.com"  # e.g. datadoghq.eu, us3.datadoghq.com
+    # PagerDuty alerting connector. With a token it queries the real API;
+    # otherwise the connector serves offline incident fixtures.
+    pagerduty_api_token: str = ""
+
+    # --- Trigger / delivery (webhooks → investigate → Slack) ---
+    # PagerDuty webhook → auto-start an investigation (HMAC-verified).
+    pagerduty_webhook_secret: str = ""
+    # Slack app: post investigations + approval buttons, verify interaction callbacks.
+    slack_bot_token: str = ""
+    slack_signing_secret: str = ""
+    slack_channel: str = ""  # channel id/name investigations post into
 
     # --- API ---
     # Deployment environment: "development" | "production". In production the app

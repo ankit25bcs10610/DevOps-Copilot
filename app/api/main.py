@@ -21,6 +21,7 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import parse_qs
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -33,6 +34,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app import metrics_source, observability, runtime
 from app.config import ROOT, get_settings
+from app.integrations import pagerduty as pd_webhook
+from app.integrations import slack
 from app.llm import active_api_key, resolved_models
 from app.session import CopilotSession, TurnResult
 
@@ -60,6 +63,12 @@ MCP_CATALOG = [
         "label": "GitHub",
         "custom": True,
         "tools": ["list_recent_commits", "get_commit_diff", "create_pull_request"],
+    },
+    {
+        "name": "pagerduty",
+        "label": "PagerDuty",
+        "custom": True,
+        "tools": ["list_incidents", "get_incident", "get_incident_alerts"],
     },
 ]
 
@@ -281,6 +290,10 @@ async def require_auth(request: Request) -> None:
     (The static SPA mount is a sub-app, so it bypasses this dependency entirely.)
     """
     if request.method == "OPTIONS" or request.url.path in _OPEN_PATHS:
+        return
+    # Webhooks authenticate via their own provider signatures (HMAC), not the
+    # shared bearer token — PagerDuty/Slack don't send it.
+    if request.url.path.startswith("/webhooks/"):
         return
     expected = get_settings().copilot_api_token
     if not expected:
@@ -768,6 +781,114 @@ async def approve_stream(req: ApproveRequest):
 async def metrics() -> dict:
     """Real metric series + error summary from the active logs/metrics source."""
     return metrics_source.read_all()
+
+
+# --------------------------------------------------------------------------- #
+# Triggers — PagerDuty webhook -> investigate -> Slack approve/reject
+# (the product loop: the agent shows up when you're paged, instead of being asked)
+# --------------------------------------------------------------------------- #
+async def _post_to_slack(thread_id: str, title: str, result: TurnResult) -> None:
+    s = get_settings()
+    if result.status == "awaiting_approval":
+        req = result.approval_request or {}
+        detail = "\n".join(
+            f"• `{a.get('tool')}`" + (" *(write)*" if a.get("write") else "")
+            for a in req.get("actions", [])
+        ) or req.get("message", "")
+        blocks, text = slack.approval_blocks(thread_id, title, detail), f"Approval needed: {title}"
+    else:
+        blocks, text = slack.result_blocks(title, result.final_text), f"Investigation: {title}"
+    res = await slack.post_message(s.slack_bot_token, s.slack_channel, text, blocks)
+    if not res.get("ok"):
+        log.info("slack post skipped/failed (thread=%s): %s", thread_id, res.get("skipped") or res)
+
+
+async def _run_triggered_investigation(incident: dict) -> None:
+    thread_id = f"pd-{incident['id']}"
+    title = incident.get("title") or thread_id
+    seed = (
+        f"A PagerDuty incident was triggered: {title}"
+        + (f" (service: {incident['service']})" if incident.get("service") else "")
+        + ". Investigate the root cause from logs, metrics, code, and recent changes, "
+        "then propose a fix."
+    )
+    try:
+        async with _running_turn(thread_id):
+            session = await _get_session(thread_id)
+            result = await session.ask(seed)
+            if result.status == "awaiting_approval":
+                _AWAITING.add(thread_id)
+        await _post_to_slack(thread_id, title, result)
+    except Exception:  # noqa: BLE001 — best-effort background trigger
+        log.exception("triggered investigation failed (incident=%s)", incident.get("id"))
+
+
+async def _resume_triggered(thread_id: str, approved: bool) -> None:
+    try:
+        async with _running_turn(thread_id):
+            session = await _get_session(thread_id)
+            if not await session.pending_interrupt():
+                return
+            result = await session.resume(approved=approved, reason="decided via Slack")
+            if result.status == "awaiting_approval":
+                _AWAITING.add(thread_id)
+            else:
+                _AWAITING.discard(thread_id)
+        await _post_to_slack(thread_id, thread_id, result)
+    except Exception:  # noqa: BLE001
+        log.exception("slack-triggered resume failed (thread=%s)", thread_id)
+
+
+@app.post("/webhooks/pagerduty")
+async def pagerduty_webhook(request: Request):
+    """PagerDuty v3 webhook → auto-start an investigation (HMAC-verified)."""
+    raw = await request.body()
+    s = get_settings()
+    sig = request.headers.get("x-pagerduty-signature", "")
+    if not s.pagerduty_webhook_secret or not pd_webhook.verify_signature(
+        s.pagerduty_webhook_secret, raw, sig
+    ):
+        raise HTTPException(401, "invalid or unconfigured PagerDuty webhook signature")
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(400, "invalid JSON body") from exc
+    incident = pd_webhook.parse_incident(payload)
+    if not incident or not incident.get("id"):
+        return {"status": "ignored"}
+    if not incident["type"].endswith("triggered"):
+        return {"status": "ignored", "event": incident["type"]}
+    if not active_api_key():
+        log.warning("PagerDuty incident %s received but no LLM key configured", incident["id"])
+        return {"status": "accepted_no_llm", "incident": incident["id"]}
+    asyncio.create_task(_run_triggered_investigation(incident))
+    return {"status": "accepted", "incident": incident["id"]}
+
+
+@app.post("/webhooks/slack/interactions")
+async def slack_interactions(request: Request):
+    """Slack interactive callback → map an Approve/Reject button to the resume."""
+    raw = await request.body()
+    s = get_settings()
+    ts = request.headers.get("x-slack-request-timestamp", "")
+    sig = request.headers.get("x-slack-signature", "")
+    if not s.slack_signing_secret or not slack.verify_signature(
+        s.slack_signing_secret, ts, raw, sig
+    ):
+        raise HTTPException(401, "invalid or unconfigured Slack signature")
+    form = parse_qs(raw.decode())
+    try:
+        payload = json.loads(form.get("payload", ["{}"])[0])
+    except json.JSONDecodeError as exc:
+        raise HTTPException(400, "invalid interaction payload") from exc
+    actions = payload.get("actions") or []
+    if not actions:
+        return {"text": "No action."}
+    thread_id = actions[0].get("value") or ""
+    approved = actions[0].get("action_id") == "approve"
+    if active_api_key() and thread_id:
+        asyncio.create_task(_resume_triggered(thread_id, approved))
+    return {"text": f"{'Approved' if approved else 'Rejected'} — continuing the investigation."}
 
 
 # --------------------------------------------------------------------------- #

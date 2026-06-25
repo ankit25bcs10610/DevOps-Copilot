@@ -90,6 +90,24 @@ COPILOT_ENV=production COPILOT_API_TOKEN=... ANTHROPIC_API_KEY=sk-ant-... \
 For multiple workers put a process manager / `--workers N` in front — but note the
 caveat in §6 (in-process state isn't shared across workers yet).
 
+## 4b. Triggers — auto-investigate from PagerDuty, approve in Slack
+
+Beyond the web console, the agent can be driven by your incident pipeline:
+
+- **`POST /webhooks/pagerduty`** — point a PagerDuty v3 webhook here. It's
+  HMAC-verified with `PAGERDUTY_WEBHOOK_SECRET`; an `incident.triggered` event
+  auto-starts an investigation (keyed by the incident id). Needs an LLM key, or
+  it accepts and logs `accepted_no_llm`.
+- **Slack delivery** — set `SLACK_BOT_TOKEN` + `SLACK_CHANNEL` and findings post
+  to the channel; a pending write renders as **Approve / Reject** buttons.
+- **`POST /webhooks/slack/interactions`** — set this as your Slack app's
+  Interactivity Request URL. It's verified with `SLACK_SIGNING_SECRET`, and a
+  button click resumes the agent through the same approval gate.
+
+Both webhook routes bypass the bearer token (they authenticate via their own
+provider signatures) but are still body-size- and rate-limited. They need a
+public HTTPS URL (i.e. a deployed instance).
+
 ## 5. Observability
 
 Set `LANGCHAIN_TRACING_V2=true` + `LANGCHAIN_API_KEY` to ship traces to LangSmith

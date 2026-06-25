@@ -19,7 +19,7 @@ from langchain_mcp_adapters.tools import load_mcp_tools as _load_session_tools
 from app import runtime
 from app.config import get_settings
 
-_SERVERS = ("datadog", "repo", "github")
+_SERVERS = ("datadog", "repo", "github", "pagerduty")
 
 
 def _server_config() -> dict:
@@ -60,6 +60,12 @@ def _server_config() -> dict:
                 "GITHUB_TOKEN": runtime.github_token(),
                 "GITHUB_REPO": runtime.github_repo(),
             },
+        },
+        "pagerduty": {
+            "command": py,
+            "args": ["-m", "app.mcp.servers.pagerduty.server"],
+            "transport": "stdio",
+            "env": {"PAGERDUTY_API_TOKEN": s.pagerduty_api_token},  # blank = offline fixtures
         },
     }
 
