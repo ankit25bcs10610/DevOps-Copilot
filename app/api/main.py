@@ -32,7 +32,7 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app import metrics_source, observability, runtime
+from app import audit, metrics_source, observability, runtime
 from app.config import ROOT, get_settings
 from app.integrations import pagerduty as pd_webhook
 from app.integrations import slack
@@ -541,6 +541,7 @@ async def model_configure(req: ModelConfigRequest) -> dict:
         raise HTTPException(400, f"An API key is required for '{provider}'.")
 
     await _evict_all()  # rebuild sessions so the new model/key is used
+    audit.record("config.model_changed", provider=runtime.provider())
     main_model, fast_model = resolved_models()
     return {"provider": runtime.provider(), "model": main_model, "fast_model": fast_model}
 
@@ -644,6 +645,7 @@ async def approve(req: ApproveRequest) -> ChatResponse:
             raise HTTPException(
                 404, f"no investigation awaiting approval for thread '{req.thread_id}'"
             )
+        audit.record("approval.decided", thread=req.thread_id, approved=req.approved)
         try:
             result = await session.resume(approved=req.approved, reason=req.reason)
             if result.status == "awaiting_approval":
@@ -751,6 +753,7 @@ async def approve_stream(req: ApproveRequest):
                     )
                 }
                 return
+            audit.record("approval.decided", thread=req.thread_id, approved=req.approved)
             try:
                 async for ev in session.resume_stream(
                     approved=req.approved, reason=req.reason
@@ -829,6 +832,7 @@ async def _resume_triggered(thread_id: str, approved: bool) -> None:
             session = await _get_session(thread_id)
             if not await session.pending_interrupt():
                 return
+            audit.record("approval.decided", thread=thread_id, approved=approved, via="slack")
             result = await session.resume(approved=approved, reason="decided via Slack")
             if result.status == "awaiting_approval":
                 _AWAITING.add(thread_id)

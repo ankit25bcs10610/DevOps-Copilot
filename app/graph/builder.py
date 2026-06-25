@@ -16,6 +16,8 @@ human-in-the-loop interrupt resumable across separate API calls.
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
@@ -65,6 +67,28 @@ def build_graph(tools, checkpointer):
 
 
 def make_checkpointer():
-    """Return an async SQLite checkpointer context manager."""
-    settings = get_settings()
-    return AsyncSqliteSaver.from_conn_string(settings.copilot_checkpoint_db)
+    """Return an async checkpointer context manager.
+
+    Defaults to SQLite (single-instance). If COPILOT_CHECKPOINT_DB is a Postgres
+    URL, uses the Postgres saver instead — the swap that enables multi-instance
+    deployments, since graph state is already keyed by thread_id. Postgres needs
+    the optional `langgraph-checkpoint-postgres` package.
+    """
+    db = get_settings().copilot_checkpoint_db
+    if db.startswith(("postgres://", "postgresql://")):
+        return _postgres_checkpointer(db)
+    return AsyncSqliteSaver.from_conn_string(db)
+
+
+@asynccontextmanager
+async def _postgres_checkpointer(conn_string: str):
+    try:
+        from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+    except ImportError as exc:  # noqa: TRY003
+        raise RuntimeError(
+            "Postgres checkpointer requires 'langgraph-checkpoint-postgres' "
+            "(pip install langgraph-checkpoint-postgres)."
+        ) from exc
+    async with AsyncPostgresSaver.from_conn_string(conn_string) as saver:
+        await saver.setup()  # idempotent: ensures the checkpoint tables exist
+        yield saver

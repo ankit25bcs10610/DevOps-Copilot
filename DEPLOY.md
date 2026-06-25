@@ -121,10 +121,13 @@ horizontal scaling:
 - **Sessions + the rate limiter are in-process.** Two replicas don't share them.
   Move the limiter behind a gateway/Redis, and rely on the checkpointer (below)
   so any replica can resume any thread.
-- **Checkpointer is SQLite on a local volume.** For multi-instance, switch
-  `make_checkpointer()` (`app/graph/builder.py`) to the Postgres saver
-  (`langgraph-checkpoint-postgres`) and point `COPILOT_CHECKPOINT_DB` at a
-  Postgres URL. State is already keyed by `thread_id`, so this is the main change.
+- **Checkpointer: SQLite by default; Postgres is built-in.** Set
+  `COPILOT_CHECKPOINT_DB` to a `postgres://...` URL and install the `postgres`
+  extra (`uv pip install -e ".[postgres]"`) — `make_checkpointer()` switches to
+  the Postgres saver automatically (state is keyed by `thread_id`, so instances
+  share it). An encrypted per-tenant secret vault (`app/secrets_vault.py`,
+  `secrets` extra) and an audit trail (`app/audit.py`) are also in place as
+  multi-tenant foundations.
 - **MCP servers run as in-container stdio subprocesses** — one per server, held
   open for each live session (so at most `COPILOT_MAX_SESSIONS` × 3 processes;
   the cap defaults to 50 and idle sessions are evicted LRU). For isolation/scale,

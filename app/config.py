@@ -89,6 +89,10 @@ class Settings(BaseSettings):
     # when behind a trusted reverse proxy that sets it — otherwise clients can
     # spoof it to evade the limiter. Off by default = use the socket peer address.
     copilot_trust_proxy: bool = False
+    # Fernet key for the per-tenant secret vault (app/secrets_vault.py). Generate:
+    #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    # Empty = an ephemeral key (encrypted secrets won't survive a restart).
+    copilot_secret_key: str = ""
 
     # --- Observability ---
     langchain_tracing_v2: bool = False
