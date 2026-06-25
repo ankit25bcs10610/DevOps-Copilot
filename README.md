@@ -11,7 +11,7 @@
 ![LangGraph](https://img.shields.io/badge/LangGraph-stateful%20agent-1C3C3C)
 ![MCP](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-7C5CFF)
 
-**LangGraph 5-node cyclic graph** · **4 custom MCP servers / 14 tools** · **5 LLM providers** · **pytest suite in CI** · **one Docker image (SPA + API)**
+**LangGraph 5-node cyclic graph** · **4 custom MCP servers / 14 tools** · **5 LLM providers** · **PagerDuty → Slack trigger loop** · **ruff · mypy · ESLint · pytest · Vitest in CI** · **one Docker image (SPA + API)**
 
 </div>
 
@@ -54,6 +54,7 @@ It is a full-stack reference implementation of a modern agentic system, with the
 | **Human approval before writes** | Any tool call that mutates state (`create_pull_request`) is forced through a resumable LangGraph `interrupt()`; the routing can't bypass it, and the gate is covered by tests. See [Human-in-the-loop](#human-in-the-loop-by-design). |
 | **Four custom MCP servers** | a **`datadog`** observability server, a **`pagerduty`** alerting server, a **path-sandboxed** `repo` server, and a `github` server (PRs) — each with **live API + offline-fixture** modes, all hand-built on FastMCP over stdio and discovered at runtime via `langchain-mcp-adapters`. |
 | **Live SSE streaming** | `/chat/stream` and `/approve/stream` emit one event per graph step (`EventSourceResponse`), powering the live activity timeline and a **Stop** button that cancels the run server-side by disconnecting the stream. |
+| **Triggered + delivered** | A signed **PagerDuty webhook** auto-starts an investigation; findings post to **Slack** with **Approve / Reject** buttons that resume the agent through the same approval gate — the agent shows up when you're paged. |
 | **5 LLM providers, switchable live** | Anthropic (Claude Opus 4.8), OpenAI, Gemini, Groq/Llama, DeepSeek — change provider, model, or key **from the UI with no restart**, validated server-side. Adaptive thinking runs only on the main Opus model. |
 | **Production-hardened** | Bearer auth, per-IP rate limiting, request caps, `/healthz` + `/readyz`, graceful shutdown, structured JSON logs with request-ids, and a fail-closed production config. See [Production hardening](#production-hardening). |
 | **One Docker image** | A multi-stage build compiles the React + WebGL console and serves it from FastAPI — `docker compose up` gives you the whole product on `:8000`. |
@@ -137,9 +138,9 @@ Every item below is in the code today (file references included so it's verifiab
 
 **Security** — bearer-token auth with constant-time comparison (`hmac.compare_digest`); a per-IP rate limiter (memory-bounded, with a trusted-proxy guard for `X-Forwarded-For`); request-body and message-length caps returning `413`/`429` *inside* CORS so errors stay readable; a `/sources` path allowlist; **fail-closed startup** that refuses to boot `COPILOT_ENV=production` without an API token; and a prompt-injection guardrail instructing the model to treat all tool output as untrusted data, never instructions. `app/api/main.py`, `app/config.py`, `app/graph/prompts.py`
 
-**Observability** — structured JSON logs in production (text in dev), each record carrying a request-id propagated end-to-end via a contextvar; per-LLM-call token-usage logging (input / output / cache-read) for cost visibility; optional LangSmith tracing. `app/observability.py`, `app/graph/nodes.py`
+**Observability** — structured JSON logs in production (text in dev), each record carrying a request-id propagated end-to-end via a contextvar; per-LLM-call token-usage logging (input / output / cache-read) for cost visibility; an append-only **audit trail** of approval decisions + config changes (`app/audit.py`); optional LangSmith tracing and **Sentry** error tracking (`SENTRY_DSN`). `app/observability.py`, `app/graph/nodes.py`
 
-**Testing &amp; CI** — a **49-test pytest suite** covering the write-approval routing, the fail-closed config validator, the repo path-traversal/symlink sandbox, per-provider key isolation, recursion-limit derivation, and the auth / rate-limit / body-cap middleware — all without needing an LLM key. CI (`.github/workflows/ci.yml`) runs **ruff + pytest** and a **full frontend typecheck (`tsc -b --force`) + Vite build** on every push and PR.
+**Testing &amp; CI** — a **pytest suite (~60 tests)** covering the write-approval routing, the fail-closed config validator, the repo path-traversal/symlink sandbox, per-provider key isolation, recursion-limit derivation, the auth / rate-limit / body-cap middleware, the webhook signature gates, and the connector offline paths — all without an LLM key. CI (`.github/workflows/ci.yml`) runs **ruff + mypy + pytest** on the backend and **ESLint + tsc typecheck + Vitest + Vite build** on the frontend, every push and PR.
 
 **Accessibility** — `prefers-reduced-motion` support (pauses the 3D render loop, static fallback), ARIA roles/labels and a screen-reader live region for the streaming trace, a skip-to-content link, WCAG-AA-checked contrast, and a cancellable Stop control with conversation persistence across reloads. `frontend/src/`
 
@@ -211,6 +212,8 @@ Set in `.env` (most are also changeable live from the console UI — those overr
 | `POST /github/connect` · `/github/disconnect` · `GET /github/status` | Live GitHub mode (validated server-side) |
 | `POST /sources/repo` · `/sources/logs` · `POST /reset` | Point tools at your data / revert overrides |
 | `GET /metrics` | Real metric series + error summary |
+| `POST /webhooks/pagerduty` | PagerDuty trigger → auto-investigate (HMAC-verified) |
+| `POST /webhooks/slack/interactions` | Slack Approve/Reject callback (signature-verified) |
 | `GET /healthz` · `GET /readyz` | Liveness / readiness probes (auth-exempt) |
 
 ## Deployment
@@ -225,7 +228,7 @@ It runs as a non-root user, persists the SQLite checkpoint DB to a volume, and s
 
 ## Scope &amp; scaling
 
-The app is production-*hardened* but deliberately **single-instance** — one container with a SQLite checkpointer and in-process MCP subprocesses, which is the right shape for the single-artifact demo. The code is structured so each scaling step is a localized change, documented in [`DEPLOY.md` §6](DEPLOY.md): swap `make_checkpointer()` for the Postgres saver, move the rate limiter behind Redis/a gateway, and run the MCP servers as remote HTTP services. These are intentionally **not** implemented yet — framed as next steps, not claimed as done.
+The app is production-*hardened* and ships the **multi-tenant foundations**: a **Postgres checkpointer** (built-in — set `COPILOT_CHECKPOINT_DB` to a `postgres://` URL + the `postgres` extra), an encrypted **secret-vault** primitive (`app/secrets_vault.py`), and the audit trail. It still runs **single-instance by default** (SQLite + in-process MCP subprocesses), which is the right shape for the single-artifact demo. The remaining steps to full multi-tenant SaaS — per-tenant orgs/RBAC/SSO and request-scoped config (replacing the in-process runtime globals), a shared rate limiter, and remote HTTP MCP — are deliberately **not** done, and are mapped onto the code in [`docs/PRODUCT-ARCHITECTURE.md`](docs/PRODUCT-ARCHITECTURE.md) and [`DEPLOY.md` §6](DEPLOY.md). Framed as next steps, not claimed as done.
 
 ## Evaluation
 
