@@ -8,7 +8,8 @@ Interfaces  ─────────────  CLI  +  FastAPI
                               │
 Orchestration  ───────────  LangGraph state machine  (+ LangChain glue)
                               │  MCP protocol (stdio)
-Tools  ───────────────────  3 MCP servers: logs-metrics · repo · github
+Tools  ───────────────────  7 MCP servers: datadog · pagerduty · kubernetes ·
+                            sentry · github · repo · incident-memory
 ```
 
 ---
@@ -17,21 +18,30 @@ Tools  ───────────────────  3 MCP servers:
 
 Each capability lives behind an **MCP server**, a separate process that speaks
 the Model Context Protocol. The agent discovers tools at runtime; it never
-imports a server.
+imports a server. Every server has a **live-API mode** (when credentials are
+configured) and an **offline-fixture mode**, so the whole agent runs end-to-end
+with no external accounts — the fixtures are all tied to one coherent demo
+incident (a bad `checkout-svc` discount deploy).
 
 | Server | Type | Tools |
 |--------|------|-------|
-| `logs-metrics` | **custom** (built with the `mcp` SDK) | `search_logs`, `get_error_summary`, `get_metric`, `list_services` |
-| `repo` | custom, sandboxed FS + git | `list_dir`, `read_file`, `grep`, `git_log` |
-| `github` | real API or offline fixtures | `list_recent_commits`, `get_commit_diff`, `create_pull_request` *(write)* |
+| `datadog` | observability (live API / offline) | `search_logs`, `get_error_summary`, `get_metric`, `list_services`, `detect_anomaly` |
+| `pagerduty` | alerting (live API / offline) | `list_incidents`, `get_incident`, `get_incident_alerts`, `add_incident_note` *(w)*, `acknowledge_incident` *(w)*, `resolve_incident` *(write)* |
+| `kubernetes` | orchestration (kubeconfig / offline) | `list_pods`, `describe_pod`, `get_events`, `get_deployment_status`, `rollout_history`, `scale_deployment`/`rollback_deployment`/`restart_deployment` *(write)* |
+| `sentry` | error tracking (live API / offline) | `list_issues`, `get_issue`, `get_latest_event` |
+| `github` | repo host (real API / offline) | `list_recent_commits`, `get_commit_diff`, `correlate_changes`, `list_workflow_runs`, `get_failed_job_logs`, `create_pull_request` *(write)* |
+| `repo` | sandboxed FS + git | `list_dir`, `read_file`, `grep`, `git_log` |
+| `memory` | incident memory (BM25 over a corpus) | `search_incidents`, `get_incident_record` |
 
-`app/mcp/client.py` registers all three with `MultiServerMCPClient` and converts
-their tools to LangChain tools via `langchain-mcp-adapters`. **Adding a fourth
-server is one dict entry — zero agent changes.** That decoupling is the whole
-point of MCP.
+`app/mcp/client.py` registers all seven with `MultiServerMCPClient` and converts
+their tools to LangChain tools via `langchain-mcp-adapters`. **Adding a server is
+one dict entry — zero agent changes.** That decoupling is the whole point of MCP.
 
-Write actions are tagged in one place (`WRITE_TOOLS`) so the graph knows which
-calls need human approval.
+Mutating actions are classified by the **action policy engine** (`app/policy.py`),
+which maps each tool — and, where it matters, its arguments — to *allow / notify /
+approve* with a risk tier, so the graph knows which calls need human approval.
+A **guarded tool node** provenance-boxes and prompt-injection-scans every tool
+result (`app/guardrails.py`) before it re-enters the model's context.
 
 ---
 
@@ -44,6 +54,9 @@ messages         # full convo incl. tool calls/results (reducer: add_messages)
 plan             # the planner's ordered steps
 pending_action   # a write awaiting approval
 iteration        # loop guard
+tokens_used      # running LLM token total (additive reducer) — cost kill-switch
+feedback         # reflect's targeted gap note for the next agent pass
+report           # the structured RCA deliverable (set by the report node)
 status           # investigating | awaiting_approval | done | failed
 ```
 
@@ -52,23 +65,25 @@ status           # investigating | awaiting_approval | done | failed
 | Node | Responsibility |
 |------|----------------|
 | `plan` | Decompose the request into 2–5 investigation steps. |
-| `agent` | Bind tools, let Claude decide the next tool call or final answer. |
-| `tools` | Prebuilt `ToolNode` — executes read tools and approved writes. |
-| `approval` | `interrupt()` — pause for a human ✅/❌ before any write. |
-| `reflect` | DONE or CONTINUE? Enforces the iteration cap. |
+| `agent` | Bind tools, let Claude decide the next tool call or final answer. Forced to summarize at the iteration cap **or** the token budget. |
+| `tools` | Guarded `ToolNode` — executes read tools and approved writes, then provenance-boxes + injection-scans every result. |
+| `approval` | `interrupt()` — pause for a human ✅/❌ before any approve-class action, with risk tier + impact preview. |
+| `reflect` | DONE or CONTINUE? Enforces the iteration cap and the token budget. |
+| `report` | Compile the structured RCA (ranked hypotheses + verdicts + evidence, severity, confidence) and render a postmortem. |
 
 ### Control flow
 
 ```
-START → plan → agent ─┬─ write call?  → approval ─┬─ approved → tools → agent
-                      │                            └─ rejected → agent
-                      ├─ read call?   → tools → agent
-                      └─ no call?     → reflect ─┬─ continue → agent
-                                                 └─ done     → END
+START → plan → agent ─┬─ approve call? → approval ─┬─ approved → tools → agent
+                      │                             └─ rejected → agent
+                      ├─ read call?    → tools → agent
+                      └─ no call?      → reflect ─┬─ continue → agent
+                                                  └─ done     → report → END
 ```
 
 The cycle (`agent → tools → agent`) is what makes this an agent rather than a
-chain. `reflect` + `iteration` prevent infinite loops.
+chain. `reflect` + `iteration` + the token budget prevent infinite loops and
+runaway cost.
 
 ### Human-in-the-loop
 
@@ -113,5 +128,7 @@ Everything below is a config change, not a rewrite:
 ## Evaluation
 
 `evals/run_evals.py` runs cases from `testcases.yaml` against a real session and
-scores keyword recall, tool-usage correctness, and latency. Write actions are
-auto-approved so runs are non-interactive.
+scores keyword recall, tool-usage correctness, the structured RCA verdict (root
+cause named + valid severity), and latency. Write actions are auto-approved so
+runs are non-interactive. Thumbs-down feedback captured at runtime (`/feedback`,
+`app/feedback.py`) is the natural source of new regression cases.
