@@ -16,12 +16,15 @@ human-in-the-loop interrupt resumable across separate API calls.
 
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 
+from langchain_core.messages import ToolMessage
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
 
+from app import audit, guardrails
 from app.config import get_settings
 from app.graph.edges import route_after_agent, route_after_approval, route_after_reflect
 from app.graph.nodes import (
@@ -33,6 +36,37 @@ from app.graph.nodes import (
 )
 from app.graph.state import AgentState
 
+log = logging.getLogger("devcopilot.guardrails")
+
+
+def make_guarded_tool_node(tools):
+    """ToolNode wrapped with prompt-injection defenses: every tool result is
+    provenance-boxed and scanned for injection patterns before it re-enters the
+    model's context, and any hit is audited. The agent therefore never sees raw
+    untrusted telemetry — only labeled, defanged data."""
+    inner = ToolNode(tools)
+
+    async def guarded(state: AgentState) -> dict:
+        result = await inner.ainvoke(state)
+        out: list = []
+        for m in result.get("messages", []):
+            if isinstance(m, ToolMessage):
+                clean, flags = guardrails.sanitize_tool_output(
+                    m.name or "tool",
+                    m.content if isinstance(m.content, str) else str(m.content),
+                )
+                if flags:
+                    log.warning("prompt-injection patterns in %s output: %s", m.name, flags)
+                    audit.record("security.prompt_injection_detected", tool=m.name, patterns=flags)
+                out.append(
+                    ToolMessage(content=clean, tool_call_id=m.tool_call_id, name=m.name)
+                )
+            else:
+                out.append(m)
+        return {"messages": out}
+
+    return guarded
+
 
 def build_graph(tools, checkpointer):
     """Compile the graph given the loaded MCP tools and a checkpointer."""
@@ -40,7 +74,9 @@ def build_graph(tools, checkpointer):
 
     g.add_node("plan", make_plan_node())
     g.add_node("agent", make_agent_node(tools))
-    g.add_node("tools", ToolNode(tools))  # executes read tools + approved writes
+    # Executes read tools + approved writes, then provenance-boxes & injection-scans
+    # every result before it re-enters the agent's context.
+    g.add_node("tools", make_guarded_tool_node(tools))
     g.add_node("approval", approval_node)
     g.add_node("reflect", make_reflect_node())
     g.add_node("report", make_report_node())  # compile the structured RCA deliverable
