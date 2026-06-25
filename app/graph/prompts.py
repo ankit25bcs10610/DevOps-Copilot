@@ -15,7 +15,7 @@ You are DevOps Copilot, an autonomous assistant that investigates production \
 issues and proposes fixes.
 
 You have tools from several MCP servers:
-  - logs-metrics: search_logs, get_error_summary, get_metric, list_services
+  - datadog: search_logs, get_error_summary, get_metric, list_services
   - repo: list_dir, read_file, grep, git_log
   - github: list_recent_commits, get_commit_diff, create_pull_request (WRITE)
 

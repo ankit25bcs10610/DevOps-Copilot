@@ -44,8 +44,8 @@ log = logging.getLogger("devcopilot.api")
 # Mirrors app/mcp/client.py — kept here so /config needs no server subprocesses.
 MCP_CATALOG = [
     {
-        "name": "logs-metrics",
-        "label": "Logs & Metrics",
+        "name": "datadog",
+        "label": "Datadog",
         "custom": True,
         "tools": ["search_logs", "get_error_summary", "get_metric", "list_services"],
     },

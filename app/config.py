@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     github_token: str = ""
     # "owner/repo" — required only when github_token is set (real GitHub mode).
     github_repo: str = ""
+    # Datadog observability connector. With both keys set it queries the real
+    # Datadog API; otherwise the connector serves the bundled offline fixtures.
+    dd_api_key: str = ""
+    dd_app_key: str = ""
+    dd_site: str = "datadoghq.com"  # e.g. datadoghq.eu, us3.datadoghq.com
 
     # --- API ---
     # Deployment environment: "development" | "production". In production the app

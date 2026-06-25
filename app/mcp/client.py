@@ -17,8 +17,9 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.tools import load_mcp_tools as _load_session_tools
 
 from app import runtime
+from app.config import get_settings
 
-_SERVERS = ("logs-metrics", "repo", "github")
+_SERVERS = ("datadog", "repo", "github")
 
 
 def _server_config() -> dict:
@@ -29,12 +30,19 @@ def _server_config() -> dict:
     servers read the same data the app is configured with.
     """
     py = sys.executable
+    s = get_settings()
     return {
-        "logs-metrics": {
+        "datadog": {
             "command": py,
-            "args": ["-m", "app.mcp.servers.logs_metrics.server"],
+            "args": ["-m", "app.mcp.servers.datadog.server"],
             "transport": "stdio",
-            "env": {"LOGS_DATA_PATH": str(runtime.logs_path())},
+            # LOGS_DATA_PATH backs offline-demo mode; DD_* enable the live API.
+            "env": {
+                "LOGS_DATA_PATH": str(runtime.logs_path()),
+                "DD_API_KEY": s.dd_api_key,
+                "DD_APP_KEY": s.dd_app_key,
+                "DD_SITE": s.dd_site,
+            },
         },
         "repo": {
             "command": py,

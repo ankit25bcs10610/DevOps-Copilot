@@ -52,7 +52,7 @@ It is a full-stack reference implementation of a modern agentic system, with the
 | | |
 |---|---|
 | **Human approval before writes** | Any tool call that mutates state (`create_pull_request`) is forced through a resumable LangGraph `interrupt()`; the routing can't bypass it, and the gate is covered by tests. See [Human-in-the-loop](#human-in-the-loop-by-design). |
-| **Three custom MCP servers** | `logs-metrics` (custom data tools), a **path-sandboxed** `repo` server, and a `github` server with **live API + offline-fixture** modes — all hand-built on FastMCP over stdio, discovered at runtime via `langchain-mcp-adapters`. |
+| **Three custom MCP servers** | a **`datadog`** observability server (live Datadog API + offline fixtures), a **path-sandboxed** `repo` server, and a `github` server with **live API + offline-fixture** modes — all hand-built on FastMCP over stdio, discovered at runtime via `langchain-mcp-adapters`. |
 | **Live SSE streaming** | `/chat/stream` and `/approve/stream` emit one event per graph step (`EventSourceResponse`), powering the live activity timeline and a **Stop** button that cancels the run server-side by disconnecting the stream. |
 | **5 LLM providers, switchable live** | Anthropic (Claude Opus 4.8), OpenAI, Gemini, Groq/Llama, DeepSeek — change provider, model, or key **from the UI with no restart**, validated server-side. Adaptive thinking runs only on the main Opus model. |
 | **Production-hardened** | Bearer auth, per-IP rate limiting, request caps, `/healthz` + `/readyz`, graceful shutdown, structured JSON logs with request-ids, and a fail-closed production config. See [Production hardening](#production-hardening). |
@@ -89,7 +89,7 @@ A React console with a live activity timeline, the human-in-the-loop approval ca
         └────────────────────────┬───────────────────┘
                                  ▼   (MCP protocol, stdio)
    ┌──────────────────────┬──────────────────────┬───────────────────────────┐
-   │ logs-metrics (custom)│  repo (sandboxed)    │  github (live / offline)  │  MCP
+   │ datadog (live/offline)│ repo (sandboxed)    │  github (live / offline)  │  MCP
    │ search_logs          │  list_dir  read_file │  list_recent_commits      │  servers
    │ get_error_summary    │  grep      git_log   │  get_commit_diff          │
    │ get_metric           │                      │  create_pull_request (W)  │
