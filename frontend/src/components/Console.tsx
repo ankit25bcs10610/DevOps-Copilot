@@ -248,8 +248,17 @@ export function Console({ onHome }: { onHome: () => void }) {
             <>
               <div className="cns-scroll">
                 <div className="thread">
-                  {turns.map((turn) => (
-                    <Message key={turn.id} turn={turn} onDecision={respond} />
+                  {turns.map((turn, i) => (
+                    <Message
+                      key={turn.id}
+                      turn={turn}
+                      onDecision={respond}
+                      onRetry={
+                        turn.status === "error" && !disabled && turns[i - 1]?.role === "user"
+                          ? () => send(turns[i - 1].text)
+                          : undefined
+                      }
+                    />
                   ))}
                   <div ref={endRef} />
                 </div>

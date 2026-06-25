@@ -27,7 +27,7 @@ function Sparkline({ data, color }: { data: number[]; color: string }) {
     })
     .join(" ");
   return (
-    <svg className="spark" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
+    <svg className="spark" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" aria-hidden="true">
       <polyline points={pts} fill="none" stroke={color} strokeWidth="2" />
     </svg>
   );
@@ -78,7 +78,13 @@ function ErrorChart() {
           <span>0%</span>
         </div>
         <div className="chart__plot">
-          <svg className="chart__svg" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+          <svg
+            className="chart__svg"
+            viewBox={`0 0 ${W} ${H}`}
+            preserveAspectRatio="none"
+            role="img"
+            aria-label="Area chart of checkout-svc 5xx error rate over the last 30 minutes, spiking to about 71% when the incident was detected."
+          >
             <defs>
               <linearGradient id="err-fill" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#ff6b6b" stopOpacity="0.45" />
@@ -317,7 +323,13 @@ export function Landing({ onLaunch }: { onLaunch: () => void }) {
                 </span>
               </span>
             </div>
-            <svg className="topo" viewBox="0 0 680 170" preserveAspectRatio="xMidYMid meet">
+            <svg
+              className="topo"
+              viewBox="0 0 680 170"
+              preserveAspectRatio="xMidYMid meet"
+              role="img"
+              aria-label="Service topology: the API gateway routes to checkout-svc (currently degraded), which depends on inventory, payments, and the database."
+            >
               {/* base edges */}
               <line x1="90" y1="85" x2="260" y2="85" />
               <line x1="260" y1="85" x2="450" y2="45" />

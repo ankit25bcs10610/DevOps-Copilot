@@ -8,9 +8,10 @@ import { Icon } from "./Icon";
 interface Props {
   turn: Turn;
   onDecision: (turnId: string, approved: boolean, reason: string) => void;
+  onRetry?: () => void;
 }
 
-export function Message({ turn, onDecision }: Props) {
+export function Message({ turn, onDecision, onRetry }: Props) {
   if (turn.role === "user") {
     return (
       <div className="row row--user">
@@ -42,6 +43,12 @@ export function Message({ turn, onDecision }: Props) {
           <div className="inline-error" role="alert">
             <Icon name="alert" size={16} className="inline-error__icon" />
             <span>{turn.text}</span>
+            {onRetry && (
+              <button type="button" className="inline-error__retry" onClick={onRetry}>
+                <Icon name="refresh" size={13} />
+                <span>Retry</span>
+              </button>
+            )}
           </div>
         )}
 

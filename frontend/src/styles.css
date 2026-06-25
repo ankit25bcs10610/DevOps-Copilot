@@ -863,6 +863,26 @@ input {
   margin-top: 1px;
   color: var(--bad);
 }
+.inline-error__retry {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--bad);
+  background: transparent;
+  border: 1px solid rgba(255, 107, 107, 0.5);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.inline-error__retry:hover {
+  background: rgba(255, 107, 107, 0.14);
+}
 
 /* ---- Approval card ---- */
 .approval {
