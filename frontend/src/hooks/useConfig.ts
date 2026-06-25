@@ -69,10 +69,17 @@ export function useConfig(): ConfigState {
   return { config: _config, failed: _failed, refresh: refreshConfig };
 }
 
-export const providerLabel = (p?: string) =>
-  p === "anthropic" ? "Anthropic" : p === "groq" ? "Groq" : p ?? "—";
+const PROVIDER_LABELS: Record<string, string> = {
+  anthropic: "Anthropic",
+  openai: "OpenAI",
+  gemini: "Google",
+  groq: "Groq",
+  deepseek: "DeepSeek",
+};
+export const providerLabel = (p?: string) => (p ? PROVIDER_LABELS[p] ?? p : "—");
 
-/** "claude-opus-4-8" -> "Opus 4.8"; "llama-3.3-70b-versatile" -> "Llama 3.3 70B". */
+/** Pretty short names: "claude-opus-4-8" -> "Opus 4.8", "gpt-4o" -> "GPT-4o",
+ *  "gemini-1.5-pro" -> "Gemini 1.5 Pro", "deepseek-chat" -> "DeepSeek Chat". */
 export function modelShort(id?: string): string {
   if (!id) return "";
   if (id.startsWith("claude-")) {
@@ -83,6 +90,12 @@ export function modelShort(id?: string): string {
     const m = id.match(/llama-([\d.]+)-(\d+b)/);
     if (m) return `Llama ${m[1]} ${m[2].toUpperCase()}`;
   }
+  if (id.startsWith("gpt-")) return `GPT-${id.slice(4)}`;
+  if (id.startsWith("gemini-")) {
+    const m = id.match(/gemini-([\d.]+)-(\w+)/);
+    if (m) return `Gemini ${m[1]} ${cap(m[2])}`;
+  }
+  if (id.startsWith("deepseek-")) return `DeepSeek ${cap(id.slice(9))}`;
   return id;
 }
 

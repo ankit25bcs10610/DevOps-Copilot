@@ -1,5 +1,8 @@
 import "./landing.css";
 
+import { useEffect, useState } from "react";
+
+import { getMetrics } from "../api";
 import { modelShort, providerLabel, useConfig } from "../hooks/useConfig";
 import { Icon } from "./Icon";
 
@@ -27,6 +30,80 @@ function Sparkline({ data, color }: { data: number[]; color: string }) {
     <svg className="spark" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
       <polyline points={pts} fill="none" stroke={color} strokeWidth="2" />
     </svg>
+  );
+}
+
+// 30 points of 5xx error rate (%) over the last 30 min — flat, then the incident spike.
+const ERR_SERIES = [
+  1, 2, 1, 2, 3, 2, 1, 2, 4, 3, 2, 4, 5, 4, 7, 11, 17, 26, 36, 47, 57, 65, 70, 71, 70, 68, 66,
+  64, 63, 62,
+];
+
+/** Hand-built SVG area chart — error rate over time (Trend Over Time → Area Chart). */
+function ErrorChart() {
+  // Real checkout 5xx series from /metrics (fractions → %); demo curve as fallback.
+  const [data, setData] = useState<number[]>(ERR_SERIES);
+  useEffect(() => {
+    let active = true;
+    getMetrics()
+      .then((m) => {
+        const s = m.services?.["checkout-svc"]?.error_rate_5xx;
+        if (active && s && s.length) setData(s.map((p) => Math.round((p.value ?? 0) * 100)));
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+  const W = 600;
+  const H = 200;
+  const n = data.length;
+  const incident = Math.min(14, Math.max(0, n - 2)); // marker, clamped to series length
+  const px = (i: number) => (n > 1 ? (i / (n - 1)) * W : 0);
+  const py = (v: number) => H - (v / 100) * H;
+  const line = data.map((v, i) => `${px(i).toFixed(1)},${py(v).toFixed(1)}`).join(" ");
+  const area = `0,${H} ${line} ${W},${H}`;
+  return (
+    <article className="card card--chart">
+      <div className="card__head">
+        <Icon name="insight" size={16} />
+        <span>5xx error rate · last 30 min</span>
+        <span className="badge badge--bad">71% ↑</span>
+      </div>
+      <div className="chart">
+        <div className="chart__yax" aria-hidden="true">
+          <span>75%</span>
+          <span>50%</span>
+          <span>25%</span>
+          <span>0%</span>
+        </div>
+        <div className="chart__plot">
+          <svg className="chart__svg" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="err-fill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#ff6b6b" stopOpacity="0.45" />
+                <stop offset="100%" stopColor="#ff6b6b" stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            <line className="chart__grid" x1="0" y1={H * 0.25} x2={W} y2={H * 0.25} />
+            <line className="chart__grid" x1="0" y1={H * 0.5} x2={W} y2={H * 0.5} />
+            <line className="chart__grid" x1="0" y1={H * 0.75} x2={W} y2={H * 0.75} />
+            <line className="chart__marker" x1={px(incident)} y1="0" x2={px(incident)} y2={H} />
+            <polygon className="chart__area" points={area} fill="url(#err-fill)" />
+            <polyline className="chart__line" points={line} />
+          </svg>
+          <span className="chart__flag" style={{ left: `${(incident / (n - 1)) * 100}%` }}>
+            incident detected
+          </span>
+        </div>
+        <div className="chart__xax" aria-hidden="true">
+          <span>-30m</span>
+          <span>-20m</span>
+          <span>-10m</span>
+          <span>now</span>
+        </div>
+      </div>
+    </article>
   );
 }
 
@@ -78,18 +155,41 @@ export function Landing({ onLaunch }: { onLaunch: () => void }) {
               Explore the platform
             </a>
           </div>
-          <div className="hero__stats">
-            <div>
-              <strong>{serverCount}</strong>
-              <span>MCP servers</span>
+          <div className="hero-metrics">
+            <div className="hmetric">
+              <span className="hmetric__viz">
+                <svg className="hmini-mesh" viewBox="0 0 64 22" aria-hidden="true">
+                  <line x1="11" y1="11" x2="32" y2="11" />
+                  <line x1="32" y1="11" x2="53" y2="11" />
+                  <circle cx="11" cy="11" r="4" />
+                  <circle cx="32" cy="11" r="4" />
+                  <circle cx="53" cy="11" r="4" />
+                </svg>
+              </span>
+              <strong className="hmetric__val">{serverCount}</strong>
+              <span className="hmetric__label">MCP servers</span>
             </div>
-            <div>
-              <strong>5-stage</strong>
-              <span>agent pipeline</span>
+            <div className="hmetric">
+              <span className="hmetric__viz">
+                <span className="hmini-steps" aria-hidden="true">
+                  <i className="on" />
+                  <i className="on" />
+                  <i className="on" />
+                  <i className="on" />
+                  <i className="live" />
+                </span>
+              </span>
+              <strong className="hmetric__val">5-stage</strong>
+              <span className="hmetric__label">agent pipeline</span>
             </div>
-            <div>
-              <strong>&lt; 30s</strong>
-              <span>to root cause</span>
+            <div className="hmetric">
+              <span className="hmetric__viz">
+                <svg className="hmini-spark" viewBox="0 0 64 22" preserveAspectRatio="none" aria-hidden="true">
+                  <polyline points="0,4 12,7 22,5 32,11 42,13 54,18 64,19" />
+                </svg>
+              </span>
+              <strong className="hmetric__val">&lt; 30s</strong>
+              <span className="hmetric__label">to root cause</span>
             </div>
           </div>
         </div>
@@ -208,29 +308,51 @@ export function Landing({ onLaunch }: { onLaunch: () => void }) {
             <div className="card__head">
               <Icon name="branch" size={16} />
               <span>Service Topology</span>
+              <span className="topo__legend">
+                <span>
+                  <span className="sdot sdot--ok" /> healthy
+                </span>
+                <span>
+                  <span className="sdot sdot--bad" /> degraded
+                </span>
+              </span>
             </div>
-            <svg className="topo" viewBox="0 0 240 120">
-              <line x1="40" y1="60" x2="120" y2="60" />
-              <line x1="120" y1="60" x2="200" y2="30" />
-              <line x1="120" y1="60" x2="200" y2="90" />
+            <svg className="topo" viewBox="0 0 680 170" preserveAspectRatio="xMidYMid meet">
+              {/* base edges */}
+              <line x1="90" y1="85" x2="260" y2="85" />
+              <line x1="260" y1="85" x2="450" y2="45" />
+              <line x1="260" y1="85" x2="450" y2="125" />
+              <line x1="450" y1="45" x2="610" y2="85" />
+              <line x1="450" y1="125" x2="610" y2="85" />
+              {/* animated traffic on the healthy edges */}
+              <line className="topo__flow" x1="90" y1="85" x2="260" y2="85" />
+              <line className="topo__flow" x1="450" y1="45" x2="610" y2="85" />
+              <line className="topo__flow" x1="450" y1="125" x2="610" y2="85" />
+              {/* nodes */}
               <g className="topo__node">
-                <circle cx="40" cy="60" r="14" />
-                <text x="40" y="92">gateway</text>
+                <circle cx="90" cy="85" r="16" />
+                <text x="90" y="123">gateway</text>
               </g>
               <g className="topo__node topo__node--bad">
-                <circle cx="120" cy="60" r="16" />
-                <text x="120" y="94">checkout</text>
+                <circle cx="260" cy="85" r="19" />
+                <text x="260" y="126">checkout</text>
               </g>
               <g className="topo__node">
-                <circle cx="200" cy="30" r="12" />
-                <text x="200" y="16">inventory</text>
+                <circle cx="450" cy="45" r="14" />
+                <text x="450" y="23">inventory</text>
               </g>
               <g className="topo__node">
-                <circle cx="200" cy="90" r="12" />
-                <text x="200" y="112">payments</text>
+                <circle cx="450" cy="125" r="14" />
+                <text x="450" y="159">payments</text>
+              </g>
+              <g className="topo__node">
+                <circle cx="610" cy="85" r="15" />
+                <text x="610" y="122">database</text>
               </g>
             </svg>
           </article>
+
+          <ErrorChart />
         </div>
       </section>
 
@@ -264,14 +386,25 @@ export function Landing({ onLaunch }: { onLaunch: () => void }) {
           <span className="section-eyebrow">Powered by</span>
           <h2>Production-grade agent infrastructure</h2>
         </div>
-        <div className="stack__chips">
-          {["LangGraph", "Model Context Protocol", provider, model, "FastAPI", "React + R3F"].map(
-            (s) => (
-              <span key={s} className="stack__chip">
-                {s}
+        <div className="stack__grid">
+          {[
+            { icon: "branch", label: "LangGraph", sub: "Agent orchestration" },
+            { icon: "server", label: "Model Context Protocol", sub: "Tool server protocol" },
+            { icon: "sparkles", label: provider, sub: "LLM provider" },
+            { icon: "bot", label: model, sub: "Reasoning model" },
+            { icon: "send", label: "FastAPI", sub: "API & streaming" },
+            { icon: "cpu", label: "React + R3F", sub: "3D console UI" },
+          ].map((t) => (
+            <div key={t.label} className="tech">
+              <span className="tech__icon">
+                <Icon name={t.icon} size={18} />
               </span>
-            )
-          )}
+              <span className="tech__txt">
+                <strong>{t.label}</strong>
+                <span>{t.sub}</span>
+              </span>
+            </div>
+          ))}
         </div>
         <div className="stack__cta">
           <button className="btn3d btn3d--primary btn3d--lg" onClick={onLaunch}>

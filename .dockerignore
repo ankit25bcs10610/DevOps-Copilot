@@ -1,0 +1,30 @@
+# Keep the build context small and reproducible.
+**/__pycache__/
+**/*.pyc
+.venv/
+.git/
+.github/
+.ruff_cache/
+.pytest_cache/
+
+# Python build artifacts
+*.egg-info/
+dist/
+build/
+
+# Frontend: rebuilt inside the image, never copy the host's copies in.
+frontend/node_modules/
+frontend/dist/
+
+# Local runtime state — never bake into the image.
+*.sqlite
+*.sqlite-*
+copilot_checkpoints.sqlite*
+.env
+.env.*
+!.env.example
+
+# Editor / OS noise
+.DS_Store
+.idea/
+.vscode/

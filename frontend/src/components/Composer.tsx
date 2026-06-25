@@ -5,9 +5,11 @@ import { Icon } from "./Icon";
 interface Props {
   disabled: boolean;
   onSend: (message: string) => void;
+  busy?: boolean;
+  onStop?: () => void;
 }
 
-export function Composer({ disabled, onSend }: Props) {
+export function Composer({ disabled, onSend, busy = false, onStop }: Props) {
   const [value, setValue] = useState("");
   const ref = useRef<HTMLTextAreaElement>(null);
 
@@ -16,10 +18,11 @@ export function Composer({ disabled, onSend }: Props) {
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   };
 
+  const canSend = value.trim().length > 0 && !disabled;
+
   const submit = () => {
-    const text = value.trim();
-    if (!text || disabled) return;
-    onSend(text);
+    if (!canSend) return;
+    onSend(value.trim());
     setValue("");
     if (ref.current) ref.current.style.height = "auto";
   };
@@ -47,16 +50,23 @@ export function Composer({ disabled, onSend }: Props) {
         }}
       />
       <div className="composer__actions">
-        <button
-          className="btn btn--send"
-          disabled={disabled}
-          onClick={submit}
-          aria-label="Send message"
-        >
-          <Icon name="send" size={15} />
-          <span>Send</span>
-        </button>
-        <span className="composer__hint">⌘ Enter</span>
+        {busy && onStop ? (
+          <button className="btn btn--stop" onClick={onStop} aria-label="Stop the investigation">
+            <Icon name="alert" size={15} />
+            <span>Stop</span>
+          </button>
+        ) : (
+          <button
+            className="btn btn--send"
+            disabled={!canSend}
+            onClick={submit}
+            aria-label="Send message"
+          >
+            <Icon name="send" size={15} />
+            <span>Send</span>
+          </button>
+        )}
+        <span className="composer__hint">⌘↵ to send · ↵ for newline</span>
       </div>
     </div>
   );

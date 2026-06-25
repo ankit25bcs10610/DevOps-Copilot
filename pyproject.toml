@@ -5,11 +5,13 @@ description = "An autonomous DevOps assistant built with LangChain, LangGraph, a
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    # LLM + LangChain building blocks
+    # LLM + LangChain building blocks (one integration per provider)
     "langchain>=0.3.0",
-    "langchain-anthropic>=0.3.0",
-    "langchain-groq>=0.2.0",
     "langchain-core>=0.3.0",
+    "langchain-anthropic>=0.3.0",
+    "langchain-openai>=0.2.0",       # OpenAI + DeepSeek (OpenAI-compatible)
+    "langchain-google-genai>=2.0.0", # Google Gemini
+    "langchain-groq>=0.2.0",
     # Orchestration brain
     "langgraph>=0.2.50",
     "langgraph-checkpoint-sqlite>=2.0.0",
@@ -20,6 +22,8 @@ dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
     "sse-starlette>=2.1.0",
+    # Used directly for GitHub validation (api/main.py) and the GitHub MCP server.
+    "httpx>=0.27.0",
     # Utilities
     "pydantic>=2.9.0",
     "pydantic-settings>=2.6.0",
@@ -29,6 +33,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Extra LLM providers (anthropic + groq ship in the base install). Install with:
+#   uv pip install -e ".[providers]"
+providers = [
+    "langchain-openai>=0.2.0",      # OpenAI + DeepSeek (OpenAI-compatible)
+    "langchain-google-genai>=2.0.0", # Google Gemini
+]
 dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",

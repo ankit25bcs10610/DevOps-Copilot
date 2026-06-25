@@ -12,11 +12,13 @@ from pathlib import Path
 
 from app.config import ROOT, get_settings
 
+# Every provider the agent can target. Keep in sync with app/llm.py defaults,
+# the API validation, and the frontend provider dropdown.
+PROVIDERS: tuple[str, ...] = ("anthropic", "openai", "gemini", "groq", "deepseek")
+
 _ov: dict[str, str] = {
     # model / provider
     "provider": "",
-    "anthropic_key": "",
-    "groq_key": "",
     "model": "",
     "fast_model": "",
     # github
@@ -26,6 +28,10 @@ _ov: dict[str, str] = {
     "repo_path": "",
     "logs_path": "",
 }
+
+# Per-provider API key overrides — remembered separately so switching provider in
+# the UI doesn't wipe the key you pasted for another one.
+_keys: dict[str, str] = {p: "" for p in PROVIDERS}
 
 
 def _resolve_path(p: str) -> Path:
@@ -38,31 +44,51 @@ def provider() -> str:
     return (_ov["provider"] or get_settings().copilot_provider).lower()
 
 
+def _settings_key(p: str) -> str:
+    """The .env-configured key for a provider (fallback when no UI override)."""
+    s = get_settings()
+    return {
+        "anthropic": s.anthropic_api_key,
+        "openai": s.openai_api_key,
+        "gemini": s.gemini_api_key,
+        "groq": s.groq_api_key,
+        "deepseek": s.deepseek_api_key,
+    }.get(p, "")
+
+
+def provider_key(p: str | None = None) -> str:
+    """Resolve the API key for a provider: UI override first, then .env."""
+    p = p or provider()
+    return _keys.get(p, "") or _settings_key(p)
+
+
+# Backwards-compatible single-provider helpers.
 def anthropic_key() -> str:
-    return _ov["anthropic_key"] or get_settings().anthropic_api_key
+    return provider_key("anthropic")
 
 
 def groq_key() -> str:
-    return _ov["groq_key"] or get_settings().groq_api_key
+    return provider_key("groq")
 
 
 def model_override() -> str:
-    return _ov["model"]
+    # UI override (_ov) wins; otherwise fall back to the .env COPILOT_MODEL,
+    # matching every other resolver here (the empty default lets llm.py drop
+    # to the provider's built-in default).
+    return _ov["model"] or get_settings().copilot_model
 
 
 def fast_model_override() -> str:
-    return _ov["fast_model"]
+    return _ov["fast_model"] or get_settings().copilot_fast_model
 
 
 def set_model(provider: str, api_key: str, model: str = "", fast_model: str = "") -> None:
     prov = (provider or "").strip().lower()
     _ov["provider"] = prov
-    # Always write the chosen provider's key — an empty value clears the override
+    # Store the key under the chosen provider — an empty value clears the override
     # and re-enables the .env fallback (so the UI can revert to the env key).
-    if prov == "anthropic":
-        _ov["anthropic_key"] = (api_key or "").strip()
-    elif prov == "groq":
-        _ov["groq_key"] = (api_key or "").strip()
+    if prov in _keys:
+        _keys[prov] = (api_key or "").strip()
     _ov["model"] = (model or "").strip()
     _ov["fast_model"] = (fast_model or "").strip()
 
@@ -107,26 +133,37 @@ def set_logs_path(path: str) -> None:
     _ov["logs_path"] = (path or "").strip()
 
 
-_MODEL_KEYS = ("provider", "anthropic_key", "groq_key", "model", "fast_model")
-
-
-def model_snapshot() -> dict[str, str]:
+def model_snapshot() -> dict:
     """Capture the model/provider overrides so a failed change can be rolled back."""
-    return {k: _ov[k] for k in _MODEL_KEYS}
+    return {
+        "provider": _ov["provider"],
+        "model": _ov["model"],
+        "fast_model": _ov["fast_model"],
+        "keys": dict(_keys),
+    }
 
 
-def restore_model(snap: dict[str, str]) -> None:
-    for k in _MODEL_KEYS:
-        _ov[k] = snap.get(k, "")
+def restore_model(snap: dict) -> None:
+    _ov["provider"] = snap.get("provider", "")
+    _ov["model"] = snap.get("model", "")
+    _ov["fast_model"] = snap.get("fast_model", "")
+    saved = snap.get("keys", {})
+    for p in PROVIDERS:
+        _keys[p] = saved.get(p, "")
 
 
 def reset_model() -> None:
     """Revert only the model/provider overrides (leave github + sources intact)."""
-    for k in _MODEL_KEYS:
-        _ov[k] = ""
+    _ov["provider"] = ""
+    _ov["model"] = ""
+    _ov["fast_model"] = ""
+    for p in PROVIDERS:
+        _keys[p] = ""
 
 
 def reset() -> None:
     """Revert every runtime override back to the .env defaults."""
     for k in _ov:
         _ov[k] = ""
+    for p in PROVIDERS:
+        _keys[p] = ""

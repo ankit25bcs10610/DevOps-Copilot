@@ -25,7 +25,7 @@
 
 It's a full-stack reference implementation of a modern agentic system:
 
-- **Backend** — Python · LangGraph · MCP · FastAPI, provider-switchable between **Claude Opus 4.8** and **Groq/Llama**.
+- **Backend** — Python · LangGraph · MCP · FastAPI, provider-switchable across **Anthropic (Claude Opus 4.8)**, **OpenAI**, **Google Gemini**, **Groq/Llama**, and **DeepSeek**.
 - **Frontend** — a React + TypeScript console with a real **WebGL 3D command center** (React Three Fiber), a live agent-activity timeline, and a human-in-the-loop approval UI.
 
 ---
@@ -37,10 +37,10 @@ It's a full-stack reference implementation of a modern agentic system:
 | 🧠 **Real agentic control flow** | A LangGraph graph with cycles, a reflection loop, a bounded iteration guard, and a resumable **`interrupt()`** for human approval. |
 | 🔌 **Three MCP servers (one fully custom)** | `logs-metrics`, `repo`, and `github` — discovered at runtime via `langchain-mcp-adapters`. Adding a fourth is one dict entry. |
 | ✋ **Human-in-the-loop** | Every write (e.g. opening a PR) pauses the graph; the reviewer sees the exact action and approves/rejects. State is checkpointed, so the pause survives across requests. |
-| 🔁 **Provider-switchable** | Claude Opus 4.8 or Groq/Llama — change it (and paste a key) **from the UI**, no restart. |
+| 🔁 **Provider-switchable** | Anthropic (Claude Opus 4.8), OpenAI, Gemini, Groq/Llama, or DeepSeek — change it (and paste a key) **from the UI**, no restart. |
 | ⚙️ **Runtime configuration** | Connect a real **GitHub repo**, point the **repo / logs** servers at your own data, and switch models — all validated server-side, live. |
 | 🎨 **5 themes + 3D backdrop** | Cosmic, Midnight, Forest, Sunset, Light — the whole UI (and the 3D glow) recolors instantly. |
-| 🧪 **Production touches** | SQLite checkpointing, an eval harness, graceful error handling, Docker, and config via environment. |
+| 🧪 **Production-hardened** | Bearer-token auth, per-IP rate limiting, body/message caps, `/healthz` + `/readyz` probes, graceful shutdown, structured JSON logs + request-ids, a pytest suite + CI, and a multi-stage Docker image that serves the SPA itself. See [`DEPLOY.md`](DEPLOY.md). |
 
 ---
 
@@ -148,15 +148,22 @@ Set in `.env` (or change most of these live from the console UI):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `COPILOT_PROVIDER` | `anthropic` | `anthropic` (Claude) or `groq` (Llama) |
-| `ANTHROPIC_API_KEY` | — | Required for the Anthropic provider |
+| `COPILOT_PROVIDER` | `anthropic` | `anthropic` · `openai` · `gemini` · `groq` · `deepseek` |
+| `ANTHROPIC_API_KEY` | — | Required for the Anthropic provider (Claude) |
+| `OPENAI_API_KEY` | — | Required for the OpenAI provider |
+| `GEMINI_API_KEY` | — | Required for the Gemini provider |
 | `GROQ_API_KEY` | — | Required for the Groq provider |
+| `DEEPSEEK_API_KEY` | — | Required for the DeepSeek provider |
 | `COPILOT_MODEL` / `COPILOT_FAST_MODEL` | provider defaults | Optional model overrides |
 | `TARGET_REPO_PATH` | `./sample_repo` | Repo the `repo` MCP server reads |
 | `LOGS_DATA_PATH` | `./app/mcp/servers/logs_metrics/sample_data` | Logs/metrics data dir |
 | `GITHUB_TOKEN` / `GITHUB_REPO` | — | Real GitHub mode (else offline demo) |
 | `COPILOT_MAX_ITERATIONS` | `8` | Max agent steps per turn |
+| `COPILOT_ENV` | `development` | `production` fails closed unless `COPILOT_API_TOKEN` is set |
+| `COPILOT_API_TOKEN` | — | Bearer token guarding the API (empty = open, dev only) |
 | `CORS_ORIGINS` | — | Extra browser origins for the API |
+
+> Production-only knobs (rate limits, body/message caps, trusted-proxy, etc.) live in [`.env.example`](.env.example) and [`DEPLOY.md`](DEPLOY.md).
 
 ---
 
@@ -173,8 +180,10 @@ Runs cases from `evals/testcases.yaml` against a live agent session and scores *
 ## 🐳 Docker
 
 ```bash
-docker compose up --build      # serves the API on :8000
+docker compose up --build      # builds the SPA + API into one image, serves the whole app on :8000
 ```
+
+The image builds the React SPA and serves it from FastAPI, so `http://localhost:8000` is the full product. Production config (auth token, env, limits) is in [`DEPLOY.md`](DEPLOY.md).
 
 ---
 
@@ -185,7 +194,7 @@ app/
   api/        FastAPI surface (/chat, /approve, /config, /model, /sources, /github)
   graph/      LangGraph: state, nodes, edges, builder, prompts
   mcp/        client wiring + three MCP servers (logs-metrics is fully custom)
-  llm.py      provider-switchable model factory (Anthropic / Groq)
+  llm.py      provider-switchable model factory (Anthropic / OpenAI / Gemini / Groq / DeepSeek)
   runtime.py  in-memory runtime overrides (model, sources, GitHub)
   session.py  ties MCP + graph together, drives the approval flow
   cli.py      interactive terminal UI
@@ -202,8 +211,8 @@ docs/         architecture write-up + screenshots
 ## 🧰 Tech stack
 
 **Agent:** LangGraph · `mcp` SDK · `langchain-mcp-adapters` · LangChain
-**Models:** Claude Opus 4.8 (`langchain-anthropic`) or Groq/Llama (`langchain-groq`)
-**API:** FastAPI · SQLite checkpointer
+**Models:** Claude Opus 4.8 (`langchain-anthropic`, adaptive thinking) · OpenAI · Gemini · Groq/Llama · DeepSeek
+**API:** FastAPI · SQLite checkpointer · bearer auth · rate limiting · health/readiness probes
 **Frontend:** React 18 · TypeScript · Vite · React Three Fiber + drei + postprocessing
 
 ---

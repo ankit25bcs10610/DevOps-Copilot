@@ -10,11 +10,15 @@ Adding a new capability = adding one entry here. No agent code changes.
 from __future__ import annotations
 
 import sys
+from contextlib import AsyncExitStack
 
 from langchain_core.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_mcp_adapters.tools import load_mcp_tools as _load_session_tools
 
 from app import runtime
+
+_SERVERS = ("logs-metrics", "repo", "github")
 
 
 def _server_config() -> dict:
@@ -57,12 +61,19 @@ def _server_config() -> dict:
 WRITE_TOOLS: set[str] = {"create_pull_request"}
 
 
-async def load_mcp_tools() -> tuple[list[BaseTool], MultiServerMCPClient]:
-    """Start all MCP servers and return their tools as LangChain tools.
+async def load_mcp_tools(stack: AsyncExitStack) -> tuple[list[BaseTool], MultiServerMCPClient]:
+    """Open ONE long-lived MCP session per server and load each server's tools
+    bound to that session.
 
-    Returns the tool list and the client (keep the client alive for the
-    duration of the session so the server subprocesses stay up).
+    The sessions are entered into the caller's AsyncExitStack, so they (and their
+    stdio subprocesses) close when the CopilotSession does. This reuses a single
+    subprocess per server for the whole session, instead of `get_tools()`, whose
+    tools spawn and tear down a fresh subprocess on *every* tool call — a stdio
+    handshake per call that dominated latency in a multi-tool investigation.
     """
     client = MultiServerMCPClient(_server_config())
-    tools = await client.get_tools()
+    tools: list[BaseTool] = []
+    for name in _SERVERS:
+        session = await stack.enter_async_context(client.session(name))
+        tools.extend(await _load_session_tools(session))
     return tools, client

@@ -16,6 +16,7 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 
+from app import observability
 from app.config import get_settings
 from app.llm import active_api_key
 from app.session import CopilotSession, TurnResult
@@ -55,7 +56,7 @@ async def _handle(session: CopilotSession, result: TurnResult) -> None:
 async def _run(question: str | None) -> None:
     settings = get_settings()
     if not active_api_key():
-        key = "ANTHROPIC_API_KEY" if settings.copilot_provider == "anthropic" else "GROQ_API_KEY"
+        key = f"{settings.copilot_provider.upper()}_API_KEY"
         console.print(
             f"[red]{key} is not set (COPILOT_PROVIDER={settings.copilot_provider}). "
             "Copy .env.example to .env and add your key.[/red]"
@@ -85,6 +86,7 @@ async def _run(question: str | None) -> None:
 
 
 def main() -> None:
+    observability.init()  # logging + LangSmith tracing (if enabled)
     question = " ".join(sys.argv[1:]) or None
     asyncio.run(_run(question))
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Project root = two levels up from this file (app/config.py -> app -> root)
@@ -24,10 +24,13 @@ class Settings(BaseSettings):
     )
 
     # --- LLM ---
-    # Which provider backs the agent: "anthropic" (Claude) or "groq" (Llama).
+    # Which provider backs the agent: anthropic | openai | gemini | groq | deepseek.
     copilot_provider: str = "anthropic"
     anthropic_api_key: str = ""
+    openai_api_key: str = ""
+    gemini_api_key: str = ""
     groq_api_key: str = ""
+    deepseek_api_key: str = ""
     # Optional model overrides. Leave blank to use the provider's defaults
     # (see app/llm.py: Opus 4.8 + Haiku 4.5 for Anthropic, Llama 3.3/3.1 for Groq).
     copilot_model: str = ""       # main reasoning / tool-calling model
@@ -41,9 +44,35 @@ class Settings(BaseSettings):
     github_repo: str = ""
 
     # --- API ---
+    # Deployment environment: "development" | "production". In production the app
+    # fails closed at startup unless COPILOT_API_TOKEN is set (see validator below).
+    copilot_env: str = "development"
     # Comma-separated browser origins allowed by CORS (the dev server is always
     # allowed). Set this to your deployed frontend origin in production.
     cors_origins: str = ""
+    # Shared bearer token guarding the API. Empty = auth disabled (local dev).
+    # Set it in production; the frontend sends it via VITE_API_TOKEN.
+    copilot_api_token: str = ""
+    # Filesystem root that /sources/* may point the repo/logs MCP servers at.
+    # Empty = the project root, which keeps the bundled sample data working while
+    # preventing the agent from being aimed at arbitrary host paths.
+    copilot_sources_root: str = ""
+
+    # --- Production safety limits (enforced by the API layer) ---
+    # Per-client (IP) POST cap per minute; 0 disables rate limiting.
+    copilot_rate_limit_per_min: int = 120
+    # Max accepted request body size in bytes (guards against huge payloads).
+    copilot_max_body_bytes: int = 1_000_000
+    # Max characters accepted in a single chat message.
+    copilot_max_message_chars: int = 16_000
+    # Max concurrent in-memory sessions; the LRU-idle one is evicted past this.
+    # Each live session holds one stdio subprocess per MCP server (3), so keep
+    # this modest. 0 = unlimited.
+    copilot_max_sessions: int = 50
+    # Trust the X-Forwarded-For header for client IP (rate limiting). Only enable
+    # when behind a trusted reverse proxy that sets it — otherwise clients can
+    # spoof it to evade the limiter. Off by default = use the socket peer address.
+    copilot_trust_proxy: bool = False
 
     # --- Observability ---
     langchain_tracing_v2: bool = False
@@ -59,9 +88,30 @@ class Settings(BaseSettings):
     @classmethod
     def _normalize_provider(cls, v: str) -> str:
         v = (v or "").strip().lower()
-        if v not in {"anthropic", "groq"}:
-            raise ValueError("COPILOT_PROVIDER must be 'anthropic' or 'groq'")
+        allowed = {"anthropic", "openai", "gemini", "groq", "deepseek"}
+        if v not in allowed:
+            raise ValueError(f"COPILOT_PROVIDER must be one of: {', '.join(sorted(allowed))}")
         return v
+
+    @field_validator("copilot_env")
+    @classmethod
+    def _normalize_env(cls, v: str) -> str:
+        return "production" if (v or "").strip().lower().startswith("prod") else "development"
+
+    @model_validator(mode="after")
+    def _fail_closed_in_production(self) -> "Settings":
+        # Refuse to start an unauthenticated API in production: a public, open
+        # endpoint that drives an LLM is a cost + security liability.
+        if self.copilot_env == "production" and not self.copilot_api_token.strip():
+            raise ValueError(
+                "COPILOT_API_TOKEN must be set when COPILOT_ENV=production "
+                "(refusing to start an unauthenticated, internet-exposed API)."
+            )
+        return self
+
+    @property
+    def is_production(self) -> bool:
+        return self.copilot_env == "production"
 
     @property
     def allowed_origins(self) -> list[str]:
@@ -76,6 +126,12 @@ class Settings(BaseSettings):
     @property
     def logs_path(self) -> Path:
         return (ROOT / self.logs_data_path).resolve()
+
+    @property
+    def sources_root(self) -> Path:
+        """The directory tree /sources/* is confined to (defaults to project root)."""
+        base = self.copilot_sources_root.strip()
+        return Path(base).expanduser().resolve() if base else ROOT.resolve()
 
     @property
     def offline_mode(self) -> bool:

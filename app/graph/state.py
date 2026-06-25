@@ -23,5 +23,10 @@ class AgentState(TypedDict, total=False):
     # Loop guard so the agent can't spin forever.
     iteration: int
 
+    # Reviewer note from the reflect node when it says CONTINUE — names the gap
+    # the next agent pass should close, so the loop makes progress instead of
+    # re-emitting a near-identical answer.
+    feedback: str
+
     # Lifecycle marker, used by the API/CLI to know when to stop.
     status: Status

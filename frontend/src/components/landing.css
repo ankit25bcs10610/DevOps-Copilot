@@ -2,14 +2,17 @@
 .landing {
   --bg: #050816;
   --bg2: #081226;
-  --purple: #7c5cff;
-  --cyan: #00d4ff;
-  --mint: #00ffb3;
-  --line: rgba(124, 92, 255, 0.16);
-  --glass: rgba(9, 15, 32, 0.82);
+  /* Accent colors now follow the app theme — switch themes (top-right of the
+     console) and the landing + 3D recolor together. Text/glass stay dark so the
+     command-center identity holds on every theme. */
+  --purple: var(--accent-2, #7c5cff);
+  --cyan: var(--accent, #00d4ff);
+  --mint: var(--ok, #00ffb3);
+  --line: color-mix(in srgb, var(--accent, #7c5cff) 18%, transparent);
+  --glass: rgba(9, 15, 32, 0.74);
   --txt: #e8edff;
   --dim: #8ea0c8;
-  --faint: #5d6c91;
+  --faint: #7d8cb2; /* WCAG AA: ~5.8:1 on the glass cards (was #5d6c91, ~3.7:1) */
 
   position: relative;
   z-index: 1;
@@ -21,10 +24,24 @@
 }
 
 .grad-text {
-  background: linear-gradient(100deg, var(--purple), var(--cyan) 60%, var(--mint));
+  background: linear-gradient(
+    100deg,
+    var(--purple),
+    var(--cyan) 45%,
+    var(--mint) 65%,
+    var(--cyan) 82%,
+    var(--purple)
+  );
+  background-size: 220% auto;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  animation: grad-flow 9s linear infinite;
+}
+@keyframes grad-flow {
+  to {
+    background-position: 220% center;
+  }
 }
 
 /* ---- Nav ---- */
@@ -231,6 +248,95 @@
   letter-spacing: 0.06em;
   text-shadow: 0 1px 8px rgba(5, 8, 22, 0.9);
 }
+
+/* ---- Hero metric bar (glass + mini visualizations) ---- */
+.hero-metrics {
+  display: flex;
+  margin-top: 42px;
+  pointer-events: auto;
+  background: rgba(9, 15, 32, 0.55);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  backdrop-filter: blur(14px) saturate(140%);
+  box-shadow: 0 26px 50px -30px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+.hmetric {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  padding: 16px 30px;
+}
+.hmetric + .hmetric {
+  border-left: 1px solid var(--line);
+}
+.hmetric__viz {
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.hmetric__val {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1;
+  text-shadow: 0 2px 12px rgba(5, 8, 22, 0.9);
+}
+.hmetric__label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--dim);
+}
+/* mini service mesh */
+.hmini-mesh {
+  width: 64px;
+  height: 22px;
+}
+.hmini-mesh line {
+  stroke: var(--mint);
+  stroke-width: 1.5;
+  opacity: 0.5;
+}
+.hmini-mesh circle {
+  fill: var(--mint);
+  filter: drop-shadow(0 0 4px var(--mint));
+}
+/* mini 5-stage pipeline meter */
+.hmini-steps {
+  display: inline-flex;
+  gap: 4px;
+}
+.hmini-steps i {
+  display: block;
+  width: 10px;
+  height: 6px;
+  border-radius: 2px;
+  background: var(--mint);
+}
+.hmini-steps i.live {
+  background: var(--cyan);
+  animation: step-pulse 1.2s ease-in-out infinite;
+}
+@keyframes step-pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+/* mini trend sparkline */
+.hmini-spark {
+  width: 64px;
+  height: 22px;
+}
+.hmini-spark polyline {
+  fill: none;
+  stroke: var(--cyan);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
 .hero__hint {
   position: absolute;
   bottom: 24px;
@@ -284,8 +390,43 @@
   margin: 0 auto;
   padding: 90px 24px;
 }
+/* Focused scrims so headings/cards stay legible over the bright 3D centerpiece. */
+.how::before,
+.stack::before {
+  content: "";
+  position: absolute;
+  inset: 50px 0;
+  z-index: -1;
+  border-radius: 28px;
+  background: radial-gradient(
+    75% 78% at 50% 50%,
+    rgba(5, 8, 22, 0.62) 0%,
+    rgba(5, 8, 22, 0.3) 70%,
+    transparent 100%
+  );
+  filter: blur(18px);
+  pointer-events: none;
+}
 
 /* ---- Bento grid ---- */
+/* Focused scrim: groups the dashboard into one calm surface so the bright 3D
+   beam behind it stops competing with the card content (the 3D still shows at
+   the page edges, outside this 1120px column). */
+.bento-wrap::before {
+  content: "";
+  position: absolute;
+  inset: 70px 0 60px;
+  z-index: -1;
+  border-radius: 28px;
+  background: radial-gradient(
+    78% 70% at 50% 46%,
+    rgba(5, 8, 22, 0.62) 0%,
+    rgba(5, 8, 22, 0.3) 70%,
+    transparent 100%
+  );
+  filter: blur(18px);
+  pointer-events: none;
+}
 .bento {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -298,15 +439,19 @@
   border: 1px solid var(--line);
   border-radius: 18px;
   padding: 18px;
-  backdrop-filter: blur(12px);
-  box-shadow: 0 30px 60px -40px rgba(0, 0, 0, 0.8);
-  transition: transform 0.2s, border-color 0.2s;
+  backdrop-filter: blur(16px) saturate(140%);
+  /* drop shadow for depth + a 1px top light edge so the glass reads as glass */
+  box-shadow: 0 30px 60px -40px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
   display: flex;
   flex-direction: column;
 }
 .card:hover {
-  transform: translateY(-3px);
-  border-color: rgba(124, 92, 255, 0.4);
+  transform: translateY(-4px);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  box-shadow: 0 34px 60px -34px rgba(0, 0, 0, 0.85),
+    0 0 34px -8px color-mix(in srgb, var(--accent) 60%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 .card--health {
   grid-column: span 1;
@@ -326,6 +471,9 @@
   grid-column: span 1;
 }
 .card--topo {
+  grid-column: span 2;
+}
+.card--chart {
   grid-column: span 2;
 }
 .card__head {
@@ -470,11 +618,22 @@
   list-style: none;
   margin: 0;
   padding: 0;
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 12px;
   flex: 1;
   justify-content: center;
+}
+/* connecting spine behind the step icons */
+.aitimeline::before {
+  content: "";
+  position: absolute;
+  left: 10.5px;
+  top: 18px;
+  bottom: 18px;
+  width: 1px;
+  background: linear-gradient(var(--mint), var(--cyan), var(--line));
 }
 .aitimeline li {
   display: flex;
@@ -491,6 +650,9 @@
   border-radius: 50%;
   border: 1px solid var(--line);
   color: var(--faint);
+  position: relative;
+  z-index: 1;
+  background: var(--bg2);
 }
 .aitimeline .done {
   color: var(--txt);
@@ -563,22 +725,48 @@
 }
 
 /* topology */
+.topo__legend {
+  margin-left: auto;
+  display: flex;
+  gap: 16px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--dim);
+}
+.topo__legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
 .topo {
   width: 100%;
-  flex: 1;
+  height: 168px;
 }
 .topo line {
   stroke: var(--line);
-  stroke-width: 1.5;
+  stroke-width: 1.6;
+}
+/* animated packets travelling the healthy edges */
+.topo__flow {
+  stroke: var(--cyan);
+  stroke-width: 1.8;
+  stroke-dasharray: 5 9;
+  opacity: 0.75;
+  animation: topo-flow 0.9s linear infinite;
+}
+@keyframes topo-flow {
+  to {
+    stroke-dashoffset: -14;
+  }
 }
 .topo__node circle {
-  fill: rgba(124, 92, 255, 0.15);
+  fill: color-mix(in srgb, var(--purple) 16%, transparent);
   stroke: var(--purple);
-  stroke-width: 1.5;
+  stroke-width: 1.6;
 }
 .topo__node text {
   fill: var(--dim);
-  font-size: 9px;
+  font-size: 12px;
   text-anchor: middle;
   font-family: "JetBrains Mono", monospace;
 }
@@ -589,6 +777,84 @@
 }
 .topo__node--bad text {
   fill: #ff9a9a;
+}
+
+/* ---- Error-rate area chart (Trend Over Time) ---- */
+.chart {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  grid-template-rows: 1fr 16px;
+  gap: 4px 8px;
+  height: 168px;
+}
+.chart__yax {
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  text-align: right;
+  padding: 2px 0;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 9.5px;
+  color: var(--faint);
+}
+.chart__plot {
+  grid-column: 2;
+  grid-row: 1;
+  position: relative;
+  border-left: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.chart__svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.chart__grid {
+  stroke: rgba(255, 255, 255, 0.05);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.chart__area {
+  stroke: none;
+}
+.chart__line {
+  fill: none;
+  stroke: #ff6b6b;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 6px rgba(255, 107, 107, 0.5));
+}
+.chart__marker {
+  stroke: var(--cyan);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+  opacity: 0.75;
+  vector-effect: non-scaling-stroke;
+}
+.chart__flag {
+  position: absolute;
+  top: 4px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 9.5px;
+  color: var(--cyan);
+  background: rgba(5, 8, 22, 0.72);
+  border: 1px solid var(--line);
+  padding: 1px 6px;
+  border-radius: 5px;
+}
+.chart__xax {
+  grid-column: 2;
+  grid-row: 2;
+  display: flex;
+  justify-content: space-between;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 9.5px;
+  color: var(--faint);
 }
 
 /* ---- How it works ---- */
@@ -645,21 +911,55 @@
 .stack {
   text-align: center;
 }
-.stack__chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  justify-content: center;
+.stack__grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
   margin-bottom: 36px;
 }
-.stack__chip {
-  font-size: 13px;
-  color: var(--txt);
-  background: rgba(9, 15, 32, 0.7);
-  backdrop-filter: blur(10px);
+.tech {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  background: var(--glass);
   border: 1px solid var(--line);
-  padding: 9px 16px;
-  border-radius: 999px;
+  border-radius: 14px;
+  padding: 14px 16px;
+  backdrop-filter: blur(14px) saturate(140%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transition: transform 0.18s, border-color 0.18s, box-shadow 0.18s;
+}
+.tech:hover {
+  transform: translateY(-3px);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  box-shadow: 0 0 30px -10px color-mix(in srgb, var(--accent) 60%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+.tech__icon {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  color: #fff;
+  background: linear-gradient(135deg, var(--purple), var(--cyan));
+  box-shadow: 0 6px 16px -6px var(--purple);
+}
+.tech__txt {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.tech__txt strong {
+  font-size: 14px;
+  color: var(--txt);
+}
+.tech__txt span {
+  font-size: 11.5px;
+  color: var(--dim);
 }
 .stack__cta {
   display: flex;
@@ -690,7 +990,8 @@
     grid-template-columns: repeat(2, 1fr);
   }
   .card--incident,
-  .card--topo {
+  .card--topo,
+  .card--chart {
     grid-column: span 2;
   }
   .card--health,
@@ -703,20 +1004,32 @@
   .how__step::after {
     display: none;
   }
+  .stack__grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 @media (max-width: 600px) {
   .bento,
-  .how__flow {
+  .how__flow,
+  .stack__grid {
     grid-template-columns: 1fr;
   }
   .card--health,
   .card--incident,
   .card--timeline,
-  .card--topo {
+  .card--topo,
+  .card--chart {
     grid-column: span 1;
   }
-  .hero__stats {
-    gap: 24px;
+  .hero-metrics {
+    width: 100%;
+  }
+  .hmetric {
+    flex: 1;
+    padding: 12px 10px;
+  }
+  .hmetric__val {
+    font-size: 18px;
   }
 }
 
@@ -724,7 +1037,36 @@
   .pulse-dot,
   .bar__fill,
   .aitimeline .active .aitimeline__icon,
-  .topo__node--bad circle {
+  .topo__node--bad circle,
+  .topo__flow,
+  .hmini-steps i.live {
     animation: none !important;
+  }
+}
+
+/* ---- Scroll reveal (progressive enhancement) ----
+   Sections fade/slide up as they scroll into view. Pure CSS scroll-driven
+   animation — only applied where supported and when motion is welcome; elsewhere
+   content just shows normally. */
+@keyframes reveal-up {
+  from {
+    opacity: 0;
+    transform: translateY(42px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .bento .card,
+    .how__step,
+    .stack__chip,
+    .section-head {
+      animation: reveal-up linear both;
+      animation-timeline: view();
+      animation-range: entry 0% cover 32%;
+    }
   }
 }

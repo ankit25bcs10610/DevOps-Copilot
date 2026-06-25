@@ -48,7 +48,8 @@ def _read_log_lines() -> list[str]:
     log_file = DATA_DIR / "app.log"
     if not log_file.exists():
         return []
-    return [ln for ln in log_file.read_text().splitlines() if ln.strip()]
+    # errors="replace" so a stray non-UTF-8 byte can't crash every log tool.
+    return [ln for ln in log_file.read_text(errors="replace").splitlines() if ln.strip()]
 
 
 @mcp.tool()
@@ -116,8 +117,10 @@ def get_error_summary(service: str | None = None) -> dict:
         if service and svc != service:
             continue
         # Pull out the error="..." payload if present, else use the tail.
+        # Bound to the closing quote so trailing fields after error="..." don't
+        # leak into the message (which would split one error into many groups).
         if 'error="' in line:
-            msg = line.split('error="', 1)[1].rstrip('"')
+            msg = line.split('error="', 1)[1].split('"', 1)[0]
         else:
             msg = line
         counter[msg] += 1

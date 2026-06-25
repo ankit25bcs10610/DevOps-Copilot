@@ -1,0 +1,115 @@
+# Deploying DevOps Copilot
+
+This guide covers running DevOps Copilot as a **single deployable artifact**: one
+container that builds the React SPA, serves it from FastAPI, and runs the agent +
+its stdio MCP servers in-process.
+
+> TL;DR for a quick prod-ish launch:
+> ```bash
+> export COPILOT_ENV=production
+> export COPILOT_API_TOKEN="$(openssl rand -hex 24)"
+> export ANTHROPIC_API_KEY=sk-ant-...
+> docker compose up --build -d
+> # open http://localhost:8000  (send Authorization: Bearer $COPILOT_API_TOKEN on API calls)
+> ```
+
+---
+
+## 1. What's in the box
+
+- **One image, whole app.** The Dockerfile builds the SPA (stage 1) and serves it
+  from FastAPI at `/` (stage 2). API routes (`/chat`, `/config`, …) take
+  precedence; everything else is the SPA. So `http://<host>:8000` is the product.
+- **Non-root** runtime user (`uid 10001`); SQLite checkpoint state lives on a
+  writable volume at `/data`.
+- **Probes:** `/healthz` (liveness) and `/readyz` (readiness — 503 in production
+  until an LLM key is configured). Both bypass auth. A Docker `HEALTHCHECK` hits
+  `/healthz`.
+- **Built-in guards:** bearer-token auth, per-IP rate limiting, request-body and
+  message-length caps, a bounded session pool, and graceful shutdown (drains an
+  in-flight turn for up to 30s before tearing down MCP subprocesses).
+
+## 2. Required configuration
+
+| Variable | Required? | Notes |
+|---|---|---|
+| `COPILOT_ENV` | yes for prod | `production` makes the app **fail closed** at startup unless `COPILOT_API_TOKEN` is set. |
+| `COPILOT_API_TOKEN` | yes for prod | Shared bearer token. Every API call must send `Authorization: Bearer <token>`. Generate with `openssl rand -hex 24`. |
+| `COPILOT_PROVIDER` | no | `anthropic` (default) \| `openai` \| `gemini` \| `groq` \| `deepseek`. |
+| `<PROVIDER>_API_KEY` | yes (one) | e.g. `ANTHROPIC_API_KEY`. May instead be pasted at runtime via the UI, but then `/readyz` is 503 until it is. |
+| `CORS_ORIGINS` | only if SPA is hosted elsewhere | Not needed when the SPA is served same-origin from this backend. |
+| `COPILOT_SOURCES_ROOT` | recommended | Confines `/sources/*` (the agent's file tools) to a directory tree. Defaults to the project root. |
+| `COPILOT_CHECKPOINT_DB` | no | Defaults to `/data/copilot_checkpoints.sqlite` in the image. |
+
+Safety limits (sensible defaults; override only if needed):
+`COPILOT_RATE_LIMIT_PER_MIN` (120), `COPILOT_MAX_BODY_BYTES` (1000000),
+`COPILOT_MAX_MESSAGE_CHARS` (16000), `COPILOT_MAX_SESSIONS` (200),
+`COPILOT_MAX_ITERATIONS` (8). See `.env.example` for the full list.
+
+## 3. Frontend ↔ backend auth (same-origin)
+
+The SPA is served by the backend, so it calls the API with **relative URLs**
+(`VITE_API_URL=""`, baked at image build). When `COPILOT_API_TOKEN` is set, the
+browser must send it. Two options:
+
+1. **Bake it into the build** — set `VITE_API_TOKEN` at build time (it ships in
+   the JS bundle; only acceptable when the token is effectively a shared gate,
+   not a per-user secret).
+2. **Front the app with your own auth** (SSO / reverse proxy) and leave
+   `COPILOT_API_TOKEN` empty *behind that proxy* — the proxy is then the gate.
+
+For a genuine multi-user product, replace the single shared token with real
+per-user auth at a gateway; the bearer check here is a single-tenant gate.
+
+## 4. Run it
+
+**Docker Compose (recommended):**
+```bash
+cp .env.example .env        # fill in COPILOT_ENV, COPILOT_API_TOKEN, a provider key
+docker compose up --build -d
+docker compose logs -f copilot
+curl -fsS http://localhost:8000/healthz
+```
+
+**Plain Docker:**
+```bash
+docker build -t devops-copilot .
+docker run -d -p 8000:8000 \
+  -e COPILOT_ENV=production -e COPILOT_API_TOKEN=... -e ANTHROPIC_API_KEY=sk-ant-... \
+  -v copilot_state:/data devops-copilot
+```
+
+**No Docker (uvicorn):**
+```bash
+uv sync
+( cd frontend && npm ci && VITE_API_URL="" npm run build )   # produces frontend/dist
+COPILOT_ENV=production COPILOT_API_TOKEN=... ANTHROPIC_API_KEY=sk-ant-... \
+  uv run uvicorn app.api.main:app --host 0.0.0.0 --port 8000
+```
+For multiple workers put a process manager / `--workers N` in front — but note the
+caveat in §6 (in-process state isn't shared across workers yet).
+
+## 5. Observability
+
+Set `LANGCHAIN_TRACING_V2=true` + `LANGCHAIN_API_KEY` to ship traces to LangSmith
+(`app/observability.py` wires the env on startup). Structured logs go to stdout.
+
+## 6. Known limits → next scaling steps
+
+The app is production-*hardened* but currently **single-instance**. Before
+horizontal scaling:
+
+- **Sessions + the rate limiter are in-process.** Two replicas don't share them.
+  Move the limiter behind a gateway/Redis, and rely on the checkpointer (below)
+  so any replica can resume any thread.
+- **Checkpointer is SQLite on a local volume.** For multi-instance, switch
+  `make_checkpointer()` (`app/graph/builder.py`) to the Postgres saver
+  (`langgraph-checkpoint-postgres`) and point `COPILOT_CHECKPOINT_DB` at a
+  Postgres URL. State is already keyed by `thread_id`, so this is the main change.
+- **MCP servers run as in-container stdio subprocesses** — one per server, held
+  open for each live session (so at most `COPILOT_MAX_SESSIONS` × 3 processes;
+  the cap defaults to 50 and idle sessions are evicted LRU). For isolation/scale,
+  run them as remote HTTP MCP servers (`app/mcp/client.py`).
+
+These are deliberately out of scope for the single-container artifact this guide
+deploys; the code is structured so each is a localized change.

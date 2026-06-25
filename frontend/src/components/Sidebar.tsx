@@ -73,7 +73,12 @@ export function Sidebar() {
         </div>
       </section>
 
-      <a className="side-help" href="#" onClick={(e) => e.preventDefault()}>
+      <a
+        className="side-help"
+        href="https://github.com/ankit25bcs10610/DevOps-Copilot#readme"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
         <div className="side-help__txt">
           <strong>Need help getting started?</strong>
           <span>Check out our documentation</span>

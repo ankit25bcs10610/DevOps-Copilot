@@ -3,3 +3,5 @@ dist/
 .env
 *.local
 .DS_Store
+# tsc build cache — committing it lets incremental tsc skip type errors in CI
+*.tsbuildinfo

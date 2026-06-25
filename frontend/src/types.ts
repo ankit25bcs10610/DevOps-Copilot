@@ -22,6 +22,27 @@ export interface ChatResponse {
   trace: string[];
 }
 
+// One Server-Sent event from /chat/stream or /approve/stream.
+export interface StreamEvent {
+  type: "trace" | "approval" | "done" | "error";
+  thread_id?: string;
+  line?: string; // trace line
+  status?: TurnStatus;
+  answer?: string; // done / error
+  approval_request?: ApprovalRequest | null;
+  trace?: string[];
+}
+
+// /metrics response (real series from the logs/metrics source).
+export interface MetricPoint {
+  ts: string;
+  value: number;
+}
+export interface MetricsResponse {
+  services: Record<string, Record<string, MetricPoint[]>>;
+  error_summary: { total_errors: number; breakdown: { message: string; count: number }[] };
+}
+
 export interface McpServer {
   name: string;
   label: string;

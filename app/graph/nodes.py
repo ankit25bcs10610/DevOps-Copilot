@@ -6,6 +6,8 @@ nodes provide the reasoning and control logic around it.
 
 from __future__ import annotations
 
+import logging
+
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.types import interrupt
 
@@ -15,12 +17,52 @@ from app.graph.state import AgentState
 from app.llm import get_llm
 from app.mcp.client import WRITE_TOOLS
 
+log = logging.getLogger("devcopilot.agent")
+
+
+def _log_usage(node: str, resp) -> None:
+    """Log per-call LLM token usage so cost is observable (carries the request-id
+    via the logging filter). usage_metadata is absent on some providers — skip then."""
+    um = getattr(resp, "usage_metadata", None)
+    if not um:
+        return
+    details = um.get("input_token_details") or {}
+    log.info(
+        "llm_usage node=%s input=%s output=%s total=%s cache_read=%s",
+        node,
+        um.get("input_tokens"),
+        um.get("output_tokens"),
+        um.get("total_tokens"),
+        details.get("cache_read"),
+    )
+
 
 def _last_user_text(state: AgentState) -> str:
     for msg in reversed(state["messages"]):
         if isinstance(msg, HumanMessage):
             return msg.content if isinstance(msg.content, str) else str(msg.content)
     return ""
+
+
+def _history_digest(state: AgentState, max_exchanges: int = 4, max_chars: int = 400) -> str:
+    """Compact record of PRIOR exchanges (earlier user questions + the agent's
+    final answers), excluding the current request and all tool traffic. Lets the
+    planner build on a multi-turn conversation without re-reading huge tool outputs."""
+    msgs = state.get("messages", [])
+    last_user = -1
+    for i in range(len(msgs) - 1, -1, -1):
+        if isinstance(msgs[i], HumanMessage):
+            last_user = i
+            break
+    prior = msgs[:last_user] if last_user > 0 else []
+    lines: list[str] = []
+    for m in prior:
+        if isinstance(m, HumanMessage):
+            text = m.content if isinstance(m.content, str) else str(m.content)
+            lines.append(f"User: {text.strip()[:max_chars]}")
+        elif isinstance(m, AIMessage) and not m.tool_calls and str(m.content).strip():
+            lines.append(f"Assistant: {str(m.content).strip()[:max_chars]}")
+    return "\n".join(lines[-(max_exchanges * 2):])
 
 
 def make_plan_node():
@@ -32,11 +74,16 @@ def make_plan_node():
 
     def plan_node(state: AgentState) -> dict:
         request = _last_user_text(state)
+        # On a follow-up, give the planner what was already investigated so it
+        # builds on the conversation instead of re-planning from scratch.
+        digest = _history_digest(state)
+        human = f"Conversation so far:\n{digest}\n\nNew request:\n{request}" if digest else request
         resp = llm.invoke(
-            [SystemMessage(content=PLANNER_SYSTEM), HumanMessage(content=request)]
+            [SystemMessage(content=PLANNER_SYSTEM), HumanMessage(content=human)]
         )
+        _log_usage("plan", resp)
         plan = [ln.strip() for ln in str(resp.content).splitlines() if ln.strip()]
-        return {"plan": plan, "iteration": 0, "status": "investigating"}
+        return {"plan": plan, "iteration": 0, "status": "investigating", "feedback": ""}
 
     return plan_node
 
@@ -57,6 +104,7 @@ def make_agent_node(tools):
     def agent_node(state: AgentState) -> dict:
         iteration = state.get("iteration", 0) + 1
         plan_text = "\n".join(state.get("plan", [])) or "(no explicit plan)"
+        feedback = state.get("feedback", "")
         at_cap = iteration >= settings.copilot_max_iterations
 
         if at_cap:
@@ -67,9 +115,17 @@ def make_agent_node(tools):
             )
             resp = llm_plain.invoke([system, *state["messages"]])
         else:
-            system = SystemMessage(content=AGENT_SYSTEM.format(plan=plan_text))
-            resp = llm_tools.invoke([system, *state["messages"]])
+            base = AGENT_SYSTEM.format(plan=plan_text)
+            if feedback:
+                # The reflect node judged the last answer incomplete — tell the
+                # agent exactly what to close so it doesn't repeat itself.
+                base += (
+                    "\n\nReviewer feedback on your previous answer — address this "
+                    f"now before finishing:\n{feedback}"
+                )
+            resp = llm_tools.invoke([SystemMessage(content=base), *state["messages"]])
 
+        _log_usage("agent", resp)
         return {"messages": [resp], "iteration": iteration}
 
     return agent_node
@@ -134,7 +190,7 @@ def make_reflect_node():
     def reflect_node(state: AgentState) -> dict:
         # `iteration` is incremented in agent_node; reflect only reads it.
         if state.get("iteration", 0) >= settings.copilot_max_iterations:
-            return {"status": "done"}
+            return {"status": "done", "feedback": ""}
 
         request = _last_user_text(state)
         latest_answer = ""
@@ -149,12 +205,18 @@ def make_reflect_node():
                 HumanMessage(
                     content=f"Original request:\n{request}\n\n"
                     f"Agent's latest answer:\n{latest_answer}\n\n"
-                    "Is the investigation complete? Answer DONE or CONTINUE."
+                    "Is the investigation complete?"
                 ),
             ]
         )
-        verdict = str(resp.content).strip().upper()
-        status = "done" if verdict.startswith("DONE") else "investigating"
-        return {"status": status}
+        _log_usage("reflect", resp)
+        text = str(resp.content).strip()
+        if text.upper().startswith("DONE"):
+            return {"status": "done", "feedback": ""}
+        # CONTINUE — capture the gap note (everything after the verdict word) so
+        # the next agent pass closes it instead of re-emitting the same answer.
+        rest = text[len("CONTINUE"):] if text.upper().startswith("CONTINUE") else text
+        feedback = rest.lstrip(" :\n-").strip()[:500]
+        return {"status": "investigating", "feedback": feedback}
 
     return reflect_node
