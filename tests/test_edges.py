@@ -41,8 +41,8 @@ def test_after_approval_rejected_returns_to_agent():
     assert route_after_approval(state) == "agent"
 
 
-def test_after_reflect_done_ends():
-    assert route_after_reflect({"status": "done"}) == "__end__"
+def test_after_reflect_done_compiles_report():
+    assert route_after_reflect({"status": "done"}) == "report"
 
 
 def test_after_reflect_continue_loops():

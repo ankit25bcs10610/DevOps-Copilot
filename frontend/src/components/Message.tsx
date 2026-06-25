@@ -4,6 +4,7 @@ import type { Turn } from "../types";
 import { ActivityTimeline } from "./ActivityTimeline";
 import { ApprovalCard } from "./ApprovalCard";
 import { Icon } from "./Icon";
+import { RcaReportCard } from "./RcaReportCard";
 
 interface Props {
   turn: Turn;
@@ -59,6 +60,10 @@ export function Message({ turn, onDecision, onRetry }: Props) {
               <ReactMarkdown>{turn.text}</ReactMarkdown>
             </div>
           )}
+
+        {turn.status === "completed" && turn.report && (
+          <RcaReportCard report={turn.report} />
+        )}
       </div>
     </div>
   );

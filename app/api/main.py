@@ -358,6 +358,9 @@ class ChatResponse(BaseModel):
     answer: str = ""
     approval_request: dict | None = None
     trace: list[str] = []
+    # Structured RCA deliverable (ranked hypotheses, evidence, severity,
+    # postmortem), present once an investigation completes.
+    report: dict | None = None
 
 
 def _friendly_error(exc: Exception) -> str:
@@ -393,6 +396,7 @@ def _to_response(thread_id: str, result: TurnResult) -> ChatResponse:
         answer=result.final_text,
         approval_request=result.approval_request,
         trace=result.trace,
+        report=result.report,
     )
 
 
@@ -676,7 +680,12 @@ def _stream_payload(thread_id: str, ev: dict) -> dict:
             trace=ev["trace"],
         )
     elif t == "done":
-        out.update(status="completed", answer=ev["final_text"], trace=ev["trace"])
+        out.update(
+            status="completed",
+            answer=ev["final_text"],
+            trace=ev["trace"],
+            report=ev.get("report"),
+        )
     return out
 
 
@@ -799,6 +808,10 @@ async def _post_to_slack(thread_id: str, title: str, result: TurnResult) -> None
             for a in req.get("actions", [])
         ) or req.get("message", "")
         blocks, text = slack.approval_blocks(thread_id, title, detail), f"Approval needed: {title}"
+    elif result.report:
+        # Prefer the structured RCA verdict (severity/root-cause/actions at a glance).
+        blocks = slack.report_blocks(title, result.report, result.final_text)
+        text = f"Investigation: {title}"
     else:
         blocks, text = slack.result_blocks(title, result.final_text), f"Investigation: {title}"
     res = await slack.post_message(s.slack_bot_token, s.slack_channel, text, blocks)

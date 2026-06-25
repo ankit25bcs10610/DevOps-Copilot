@@ -50,6 +50,40 @@ def result_blocks(title: str, answer: str) -> list[dict]:
     ]
 
 
+_SEVERITY_EMOJI = {
+    "SEV1": ":rotating_light:", "SEV2": ":red_circle:", "SEV3": ":large_orange_circle:",
+    "SEV4": ":large_yellow_circle:", "INFO": ":information_source:",
+}
+
+
+def report_blocks(title: str, report: dict, answer: str = "") -> list[dict]:
+    """Block Kit message rendering the structured RCA report — severity/confidence
+    header, root cause, top hypotheses with verdicts, and recommended actions —
+    so the on-call gets the verdict at a glance, not a wall of prose."""
+    sev = str(report.get("severity", "SEV3")).upper()
+    conf = report.get("confidence", "low")
+    emoji = _SEVERITY_EMOJI.get(sev, ":mag:")
+    header = (
+        f"{emoji} *Investigation complete* — *{title}*\n"
+        f"*Severity:* {sev}   *Confidence:* {conf}"
+    )
+    summary = (report.get("summary") or answer or "(no summary)").strip()[:2800]
+    blocks: list[dict] = [
+        {"type": "section", "text": {"type": "mrkdwn", "text": header}},
+        {"type": "section", "text": {"type": "mrkdwn", "text": summary}},
+    ]
+    rc = report.get("root_cause")
+    if rc:
+        blocks.append({"type": "section", "text": {"type": "mrkdwn",
+                       "text": f":dart: *Root cause:* {rc[:1500]}"}})
+    actions = report.get("recommended_actions") or []
+    if actions:
+        lines = "\n".join(f"• {a}" for a in actions[:5])
+        blocks.append({"type": "section", "text": {"type": "mrkdwn",
+                       "text": f":wrench: *Recommended actions:*\n{lines[:2800]}"}})
+    return blocks
+
+
 async def post_message(
     token: str, channel: str, text: str, blocks: list[dict] | None = None
 ) -> dict:

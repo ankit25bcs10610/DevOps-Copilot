@@ -28,5 +28,10 @@ class AgentState(TypedDict, total=False):
     # re-emitting a near-identical answer.
     feedback: str
 
+    # Structured RCA deliverable produced by the report node when the
+    # investigation finishes: ranked hypotheses + verdicts, cited evidence,
+    # severity, confidence, recommended actions, and a rendered postmortem.
+    report: dict | None
+
     # Lifecycle marker, used by the API/CLI to know when to stop.
     status: Status

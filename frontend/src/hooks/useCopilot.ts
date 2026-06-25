@@ -89,6 +89,7 @@ export function useCopilot() {
           text: ev.answer ?? "",
           trace: ev.trace ?? [],
           approval: null,
+          report: ev.report ?? null,
         });
       } else if (ev.type === "error") {
         patch(assistantId, { status: "error", text: ev.answer ?? "Something went wrong." });

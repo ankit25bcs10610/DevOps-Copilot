@@ -27,6 +27,8 @@ class TurnResult:
     final_text: str = ""
     approval_request: dict | None = None
     trace: list[str] = field(default_factory=list)
+    # Structured RCA deliverable, present once an investigation completes.
+    report: dict | None = None
 
 
 class CopilotSession:
@@ -134,13 +136,15 @@ class CopilotSession:
                     "COPILOT_MAX_ITERATIONS. The trace above shows how far I got."
                 ),
                 "trace": list(trace),
+                "report": None,
             }
             return
 
-        # Finished: pull the final assistant text from persisted state.
+        # Finished: pull the final assistant text + structured report from state.
         snapshot = await self._graph.aget_state(self._config)
         final_text = _last_ai_text(snapshot.values.get("messages", []))
-        yield {"type": "done", "final_text": final_text, "trace": list(trace)}
+        report = snapshot.values.get("report")
+        yield {"type": "done", "final_text": final_text, "trace": list(trace), "report": report}
 
     async def _drive(self, graph_input: Any) -> TurnResult:
         """Run a turn to completion, collapsing the event stream into one result."""
@@ -155,7 +159,12 @@ class CopilotSession:
                 trace=last["trace"],
             )
         if last and last["type"] == "done":
-            return TurnResult(status="completed", final_text=last["final_text"], trace=last["trace"])
+            return TurnResult(
+                status="completed",
+                final_text=last["final_text"],
+                trace=last["trace"],
+                report=last.get("report"),
+            )
         return TurnResult(status="completed", final_text="(no final answer produced)")
 
 
@@ -179,6 +188,10 @@ def _describe(node: str, update: Any) -> str:
         return "⏸️  awaiting human approval"
     if node == "reflect":
         return f"🔁 reflect -> {(update or {}).get('status', '?')}"
+    if node == "report":
+        rpt = (update or {}).get("report") or {}
+        sev = rpt.get("severity", "")
+        return f"📝 compiled RCA report{f' ({sev})' if sev else ''}"
     if node == "__interrupt__":
         return "⏸️  interrupted for approval"
     return f"• {node}"

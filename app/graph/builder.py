@@ -29,6 +29,7 @@ from app.graph.nodes import (
     make_agent_node,
     make_plan_node,
     make_reflect_node,
+    make_report_node,
 )
 from app.graph.state import AgentState
 
@@ -42,6 +43,7 @@ def build_graph(tools, checkpointer):
     g.add_node("tools", ToolNode(tools))  # executes read tools + approved writes
     g.add_node("approval", approval_node)
     g.add_node("reflect", make_reflect_node())
+    g.add_node("report", make_report_node())  # compile the structured RCA deliverable
 
     g.add_edge(START, "plan")
     g.add_edge("plan", "agent")
@@ -60,8 +62,9 @@ def build_graph(tools, checkpointer):
     g.add_conditional_edges(
         "reflect",
         route_after_reflect,
-        {"agent": "agent", "__end__": END},
+        {"agent": "agent", "report": "report"},
     )
+    g.add_edge("report", END)
 
     return g.compile(checkpointer=checkpointer)
 

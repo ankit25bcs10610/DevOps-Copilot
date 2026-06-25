@@ -40,6 +40,6 @@ def route_after_approval(state: AgentState) -> Literal["tools", "agent"]:
     return "agent"
 
 
-def route_after_reflect(state: AgentState) -> Literal["agent", "__end__"]:
-    """Loop back to the agent unless the reflection node marked us done."""
-    return "__end__" if state.get("status") == "done" else "agent"
+def route_after_reflect(state: AgentState) -> Literal["agent", "report"]:
+    """When done, compile the structured RCA report; otherwise keep investigating."""
+    return "report" if state.get("status") == "done" else "agent"

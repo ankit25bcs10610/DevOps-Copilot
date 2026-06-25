@@ -6,13 +6,14 @@ nodes provide the reasoning and control logic around it.
 
 from __future__ import annotations
 
+import json
 import logging
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.types import interrupt
 
 from app.config import get_settings
-from app.graph.prompts import AGENT_SYSTEM, PLANNER_SYSTEM, REFLECT_SYSTEM
+from app.graph.prompts import AGENT_SYSTEM, PLANNER_SYSTEM, REFLECT_SYSTEM, REPORT_SYSTEM
 from app.graph.state import AgentState
 from app.llm import get_llm
 from app.mcp.client import WRITE_TOOLS
@@ -220,3 +221,202 @@ def make_reflect_node():
         return {"status": "investigating", "feedback": feedback}
 
     return reflect_node
+
+
+# --------------------------------------------------------------------------- #
+# Report node — synthesize a structured, evidence-grounded RCA deliverable.
+# This is the product's core output: instead of a freeform paragraph, every
+# finished investigation produces a typed RCA object (ranked hypotheses with
+# verdicts + cited evidence, severity, confidence, recommended actions) plus a
+# rendered blameless postmortem. All parsing/rendering lives in pure helpers so
+# it's unit-testable without an LLM, and it degrades gracefully: a non-JSON or
+# malformed model reply falls back to a minimal report built from the final text,
+# so the report node can never break a completed run.
+# --------------------------------------------------------------------------- #
+_SEVERITIES = {"SEV1", "SEV2", "SEV3", "SEV4", "INFO"}
+_CONFIDENCE = {"high", "medium", "low"}
+_VERDICTS = {"validated", "invalidated", "inconclusive"}
+
+
+def _evidence_digest(state: AgentState, max_items: int = 24, max_chars: int = 600) -> str:
+    """Compact record of what the tools actually returned, so the reporter grounds
+    the RCA in observed evidence rather than re-imagining the investigation."""
+    lines: list[str] = []
+    for m in state.get("messages", []):
+        if isinstance(m, ToolMessage):
+            name = getattr(m, "name", "tool")
+            content = m.content if isinstance(m.content, str) else str(m.content)
+            lines.append(f"[{name}] {content.strip()[:max_chars]}")
+        elif isinstance(m, AIMessage) and m.tool_calls:
+            for c in m.tool_calls:
+                lines.append(f"(called {c['name']} {json.dumps(c.get('args', {}), default=str)[:200]})")
+    return "\n".join(lines[-max_items:])
+
+
+def _coerce_str_list(value, limit: int = 20, max_chars: int = 400) -> list[str]:
+    """Coerce an arbitrary JSON value into a clean list[str] (LLMs return mixed shapes)."""
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, list):
+        return []
+    out: list[str] = []
+    for item in value:
+        text = item if isinstance(item, str) else json.dumps(item, default=str)
+        text = text.strip()
+        if text:
+            out.append(text[:max_chars])
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _normalize_report(data: dict, fallback_summary: str) -> dict:
+    """Coerce a parsed model dict into the canonical RCA shape with safe defaults.
+    Pure + total: any odd input yields a valid report rather than raising."""
+    sev = str(data.get("severity", "")).strip().upper()
+    severity = sev if sev in _SEVERITIES else "SEV3"
+    conf = str(data.get("confidence", "")).strip().lower()
+    confidence = conf if conf in _CONFIDENCE else "low"
+
+    root_cause = data.get("root_cause")
+    root_cause = root_cause.strip() if isinstance(root_cause, str) and root_cause.strip() else None
+
+    hypotheses: list[dict] = []
+    raw_hyps = data.get("hypotheses")
+    if isinstance(raw_hyps, list):
+        for h in raw_hyps:
+            if not isinstance(h, dict):
+                continue
+            cause = str(h.get("cause", "")).strip()
+            if not cause:
+                continue
+            verdict = str(h.get("verdict", "")).strip().lower()
+            hconf = str(h.get("confidence", "")).strip().lower()
+            hypotheses.append(
+                {
+                    "cause": cause[:400],
+                    "verdict": verdict if verdict in _VERDICTS else "inconclusive",
+                    "confidence": hconf if hconf in _CONFIDENCE else "low",
+                    "evidence": _coerce_str_list(h.get("evidence"), limit=8),
+                }
+            )
+            if len(hypotheses) >= 10:
+                break
+
+    summary = data.get("summary")
+    summary = summary.strip() if isinstance(summary, str) and summary.strip() else fallback_summary.strip()
+    return {
+        "summary": summary[:1500] or "(no summary produced)",
+        "severity": severity,
+        "confidence": confidence,
+        "root_cause": root_cause[:400] if root_cause else None,
+        "affected_services": _coerce_str_list(data.get("affected_services"), limit=12, max_chars=80),
+        "hypotheses": hypotheses,
+        "evidence": _coerce_str_list(data.get("evidence"), limit=20),
+        "recommended_actions": _coerce_str_list(data.get("recommended_actions"), limit=12),
+    }
+
+
+def _parse_report(text: str, fallback_summary: str) -> dict:
+    """Extract the JSON object from a model reply and normalize it. On any failure,
+    return a minimal valid report built from the final answer text."""
+    fallback: dict = {
+        "summary": fallback_summary.strip()[:1500] or "(no summary produced)",
+        "severity": "SEV3",
+        "confidence": "low",
+        "root_cause": None,
+        "affected_services": [],
+        "hypotheses": [],
+        "evidence": [],
+        "recommended_actions": [],
+    }
+    if not text or not text.strip():
+        return fallback
+    start, end = text.find("{"), text.rfind("}")
+    if start == -1 or end <= start:
+        return fallback
+    try:
+        data = json.loads(text[start : end + 1])
+    except (ValueError, TypeError):
+        return fallback
+    if not isinstance(data, dict):
+        return fallback
+    return _normalize_report(data, fallback_summary)
+
+
+def _render_postmortem(report: dict, request: str) -> str:
+    """Render a blameless, copy-pasteable postmortem from the RCA object. Pure:
+    deterministic Markdown, no extra LLM call. Roles/actions, never names."""
+    rc = report.get("root_cause") or "Inconclusive — see hypotheses below."
+    services = ", ".join(report.get("affected_services") or []) or "—"
+    lines = [
+        "# Incident Postmortem",
+        "",
+        f"**Severity:** {report.get('severity', 'SEV3')}  ·  "
+        f"**Confidence:** {report.get('confidence', 'low')}  ·  "
+        f"**Affected services:** {services}",
+        "",
+        "## Summary",
+        report.get("summary", "").strip() or "—",
+        "",
+        "## Root cause",
+        rc,
+        "",
+        "## What was investigated",
+        f"> Triggering request: {request.strip()[:500]}" if request.strip() else "> —",
+    ]
+    hyps = report.get("hypotheses") or []
+    if hyps:
+        lines += ["", "## Hypotheses considered"]
+        for h in hyps:
+            lines.append(f"- **{h['cause']}** — _{h['verdict']}_ (confidence: {h['confidence']})")
+            for ev in h.get("evidence", []):
+                lines.append(f"    - {ev}")
+    evidence = report.get("evidence") or []
+    if evidence:
+        lines += ["", "## Evidence"]
+        lines += [f"- {e}" for e in evidence]
+    actions = report.get("recommended_actions") or []
+    if actions:
+        lines += ["", "## Recommended actions / follow-ups"]
+        lines += [f"- [ ] {a}" for a in actions]
+    lines += [
+        "",
+        "---",
+        "_Generated by DevOps Copilot. Blameless by design — this describes systems "
+        "and actions, not individuals. Review before sharing._",
+    ]
+    return "\n".join(lines)
+
+
+def make_report_node():
+    """Node: compile the finished investigation into a structured RCA report +
+    postmortem. Runs once when the investigation is done (after reflect)."""
+    # Use the fast model: it's a synthesis-from-given-text task (cheap), and it
+    # avoids the adaptive-thinking + forced-tool conflict on the main model.
+    llm = get_llm(fast=True)
+
+    def report_node(state: AgentState) -> dict:
+        request = _last_user_text(state)
+        final_answer = ""
+        for msg in reversed(state["messages"]):
+            if isinstance(msg, AIMessage) and not msg.tool_calls and str(msg.content).strip():
+                final_answer = str(msg.content)
+                break
+        digest = _evidence_digest(state)
+        human = (
+            f"Original request:\n{request}\n\n"
+            f"Agent's final answer:\n{final_answer}\n\n"
+            f"Evidence gathered (tool calls + results):\n{digest or '(none recorded)'}"
+        )
+        try:
+            resp = llm.invoke([SystemMessage(content=REPORT_SYSTEM), HumanMessage(content=human)])
+            _log_usage("report", resp)
+            report = _parse_report(str(resp.content), fallback_summary=final_answer)
+        except Exception:  # noqa: BLE001 — reporting must never break a finished run
+            log.exception("report synthesis failed; using fallback report")
+            report = _parse_report("", fallback_summary=final_answer)
+        report["postmortem"] = _render_postmortem(report, request)
+        return {"report": report, "status": "done"}
+
+    return report_node

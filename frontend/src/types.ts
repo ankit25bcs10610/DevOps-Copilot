@@ -14,12 +14,37 @@ export interface ApprovalRequest {
   actions: ProposedAction[];
 }
 
+// Structured RCA deliverable produced when an investigation completes.
+export type Severity = "SEV1" | "SEV2" | "SEV3" | "SEV4" | "INFO";
+export type Confidence = "high" | "medium" | "low";
+export type Verdict = "validated" | "invalidated" | "inconclusive";
+
+export interface Hypothesis {
+  cause: string;
+  verdict: Verdict;
+  confidence: Confidence;
+  evidence: string[];
+}
+
+export interface RcaReport {
+  summary: string;
+  severity: Severity;
+  confidence: Confidence;
+  root_cause: string | null;
+  affected_services: string[];
+  hypotheses: Hypothesis[];
+  evidence: string[];
+  recommended_actions: string[];
+  postmortem: string; // rendered Markdown
+}
+
 export interface ChatResponse {
   thread_id: string;
   status: TurnStatus;
   answer: string;
   approval_request: ApprovalRequest | null;
   trace: string[];
+  report?: RcaReport | null;
 }
 
 // One Server-Sent event from /chat/stream or /approve/stream.
@@ -31,6 +56,7 @@ export interface StreamEvent {
   answer?: string; // done / error
   approval_request?: ApprovalRequest | null;
   trace?: string[];
+  report?: RcaReport | null;
 }
 
 // /metrics response (real series from the logs/metrics source).
@@ -81,4 +107,5 @@ export interface Turn {
   // "thinking" is a transient UI state while a request is in flight.
   status: TurnStatus | "thinking";
   approval: ApprovalRequest | null;
+  report?: RcaReport | null;
 }
