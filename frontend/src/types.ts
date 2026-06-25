@@ -2,15 +2,23 @@
 
 export type TurnStatus = "completed" | "awaiting_approval" | "error";
 
+export type RiskTier = "low" | "medium" | "high";
+export type ActionDecision = "allow" | "notify" | "approve";
+
 export interface ProposedAction {
   tool: string;
   args: Record<string, unknown>;
   write?: boolean;
+  decision?: ActionDecision;
+  risk?: RiskTier;
+  why?: string;
+  preview?: string;
 }
 
 export interface ApprovalRequest {
   type: string;
   message: string;
+  risk?: RiskTier;
   actions: ProposedAction[];
 }
 

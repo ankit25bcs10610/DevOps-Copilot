@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Literal
 
+from app import policy
 from app.graph.state import AgentState
-from app.mcp.client import WRITE_TOOLS
 
 
 def route_after_agent(state: AgentState) -> Literal["approval", "tools", "reflect"]:
@@ -22,7 +22,9 @@ def route_after_agent(state: AgentState) -> Literal["approval", "tools", "reflec
     tool_calls = getattr(last, "tool_calls", None)
     if not tool_calls:
         return "reflect"
-    if any(call["name"] in WRITE_TOOLS for call in tool_calls):
+    # The policy engine is argument-aware (e.g. scale-to-zero escalates to approve),
+    # so classify each call's args, not just its name.
+    if any(policy.requires_approval(call["name"], call.get("args")) for call in tool_calls):
         return "approval"
     return "tools"
 

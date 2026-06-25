@@ -12,11 +12,11 @@ import logging
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.types import interrupt
 
+from app import policy
 from app.config import get_settings
 from app.graph.prompts import AGENT_SYSTEM, PLANNER_SYSTEM, REFLECT_SYSTEM, REPORT_SYSTEM
 from app.graph.state import AgentState
 from app.llm import get_llm
-from app.mcp.client import WRITE_TOOLS
 
 log = logging.getLogger("devcopilot.agent")
 
@@ -168,16 +168,33 @@ def approval_node(state: AgentState) -> dict:
     all_calls = list(getattr(last, "tool_calls", []))
 
     # Surface EVERY tool call that will run (the ToolNode executes the whole
-    # message on approval), tagging which ones mutate state — so the reviewer
-    # isn't shown only the write and silently approving co-bundled reads too.
+    # message on approval), each classified by the policy engine: decision class
+    # (allow/notify/approve), risk tier, why, and a human-readable impact preview —
+    # so the reviewer sees what will happen, not just a tool name, and isn't shown
+    # only the write while silently approving co-bundled reads.
+    actions = []
+    for c in all_calls:
+        cls = policy.classify(c["name"], c.get("args"))
+        actions.append(
+            {
+                "tool": c["name"],
+                "args": c["args"],
+                "write": cls["write"],
+                "decision": cls["decision"],
+                "risk": cls["risk"],
+                "why": cls["why"],
+                "preview": cls["preview"],
+            }
+        )
+    highest = "high" if any(a["risk"] == "high" for a in actions) else (
+        "medium" if any(a["risk"] == "medium" for a in actions) else "low"
+    )
     decision = interrupt(
         {
             "type": "approval_request",
-            "message": "The agent wants to run an action that includes a write operation.",
-            "actions": [
-                {"tool": c["name"], "args": c["args"], "write": c["name"] in WRITE_TOOLS}
-                for c in all_calls
-            ],
+            "message": "The agent wants to run an action that needs your approval.",
+            "risk": highest,
+            "actions": actions,
         }
     )
 

@@ -942,6 +942,29 @@ input {
   font-size: 13px;
   color: var(--text);
 }
+.approval__risk {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 3px 6px;
+  border-radius: 4px;
+  border: 1px solid currentColor;
+}
+.approval__risk--high { color: var(--bad); }
+.approval__risk--medium { color: var(--warn); }
+.approval__risk--low { color: var(--ok); }
+.approval__preview {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.approval__why {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+}
 .approval__args {
   margin: 0;
   display: grid;

@@ -16,7 +16,7 @@ from langchain_core.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.tools import load_mcp_tools as _load_session_tools
 
-from app import runtime
+from app import policy, runtime
 from app.config import get_settings
 
 _SERVERS = ("datadog", "repo", "github", "pagerduty")
@@ -70,9 +70,10 @@ def _server_config() -> dict:
     }
 
 
-# Tool names that mutate external state — the agent must get human approval
-# before invoking any of these.
-WRITE_TOOLS: set[str] = {"create_pull_request"}
+# Tool names that mutate external state and require human approval. The action
+# policy engine (app/policy.py) is the single source of truth; this alias keeps
+# existing imports working while approve/notify/allow classification lives there.
+WRITE_TOOLS: set[str] = policy.APPROVE_TOOLS
 
 
 async def load_mcp_tools(stack: AsyncExitStack) -> tuple[list[BaseTool], MultiServerMCPClient]:

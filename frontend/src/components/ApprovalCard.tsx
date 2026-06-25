@@ -27,8 +27,15 @@ export function ApprovalCard({ request, disabled, onDecision }: Props) {
         <div key={i} className="approval__action">
           <div className="approval__tool">
             {action.write !== false && <span className="approval__write">WRITE</span>}
+            {action.risk && (
+              <span className={`approval__risk approval__risk--${action.risk}`}>
+                {action.risk} risk
+              </span>
+            )}
             <code>{action.tool}</code>
           </div>
+          {action.preview && <div className="approval__preview">{action.preview}</div>}
+          {action.why && <div className="approval__why">{action.why}</div>}
           <dl className="approval__args">
             {Object.entries(action.args).map(([k, v]) => (
               <div key={k} className="approval__arg">
