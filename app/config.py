@@ -94,6 +94,8 @@ class Settings(BaseSettings):
     langchain_tracing_v2: bool = False
     langchain_api_key: str = ""
     langchain_project: str = "devops-copilot"
+    # Optional Sentry error tracking (needs `pip install sentry-sdk`). Empty = off.
+    sentry_dsn: str = ""
 
     # --- Agent behavior ---
     # Max agent (LLM) calls per turn — bounds the agent<->tools loop.

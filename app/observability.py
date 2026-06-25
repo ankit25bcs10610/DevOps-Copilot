@@ -87,6 +87,22 @@ def setup_langsmith() -> None:
     log.info("LangSmith tracing enabled (project=%s)", s.langchain_project)
 
 
+def setup_sentry() -> None:
+    """Enable Sentry error tracking when SENTRY_DSN is set. Sentry's default
+    logging integration captures our `log.exception(...)` calls as events, so no
+    per-handler wiring is needed. No-op (with a warning) if the SDK isn't installed."""
+    s = get_settings()
+    if not s.sentry_dsn:
+        return
+    try:
+        import sentry_sdk
+    except ImportError:
+        log.warning("SENTRY_DSN is set but sentry-sdk is not installed (pip install sentry-sdk)")
+        return
+    sentry_sdk.init(dsn=s.sentry_dsn, environment=s.copilot_env, traces_sample_rate=0.0)
+    log.info("Sentry error tracking enabled (env=%s)", s.copilot_env)
+
+
 def init() -> None:
     """Idempotent one-time setup."""
     global _INITIALIZED
@@ -95,3 +111,4 @@ def init() -> None:
     _INITIALIZED = True
     configure_logging()
     setup_langsmith()
+    setup_sentry()
