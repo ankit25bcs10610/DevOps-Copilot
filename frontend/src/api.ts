@@ -116,6 +116,16 @@ export function getMetrics(): Promise<MetricsResponse> {
   return get<MetricsResponse>("/metrics");
 }
 
+/** Submit thumbs up/down on an investigation (feeds the eval/learning loop). */
+export function submitFeedback(
+  threadId: string,
+  rating: "up" | "down",
+  comment = "",
+  question = ""
+): Promise<unknown> {
+  return post("/feedback", { thread_id: threadId, rating, comment, question });
+}
+
 /** Fetch the running agent's provider, models, and MCP server catalog. */
 export function getConfig(): Promise<AppConfig> {
   return get<AppConfig>("/config");

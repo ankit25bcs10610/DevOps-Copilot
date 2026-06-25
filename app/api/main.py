@@ -32,7 +32,7 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app import audit, metrics_source, observability, runtime
+from app import audit, feedback, metrics_source, observability, runtime
 from app.config import ROOT, get_settings
 from app.integrations import pagerduty as pd_webhook
 from app.integrations import slack
@@ -379,6 +379,13 @@ class ModelConfigRequest(BaseModel):
 
 class SourcePathRequest(BaseModel):
     path: str
+
+
+class FeedbackRequest(BaseModel):
+    thread_id: str
+    rating: str  # "up" | "down"
+    comment: str = ""
+    question: str = ""
 
 
 class ChatResponse(BaseModel):
@@ -826,6 +833,26 @@ async def approve_stream(req: ApproveRequest):
 async def metrics() -> dict:
     """Real metric series + error summary from the active logs/metrics source."""
     return metrics_source.read_all()
+
+
+@app.post("/feedback")
+async def submit_feedback(req: FeedbackRequest) -> dict:
+    """Capture a thumbs up/down on an investigation. Thumbs-down on a real failure
+    is the seed for a regression eval case (the trust/learning loop)."""
+    try:
+        entry = feedback.record_feedback(req.thread_id, req.rating, req.comment, req.question)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"status": "recorded", "feedback": entry}
+
+
+@app.get("/audit")
+async def get_audit(limit: int = 100, event_prefix: str = "") -> dict:
+    """Queryable audit trail: recent who/what/when events (approvals, model
+    changes, prompt-injection detections, feedback), newest first. Auth-protected
+    like every other route — the read half of the compliance requirement."""
+    limit = max(1, min(limit, 1000))
+    return {"events": audit.recent(limit=limit, event_prefix=event_prefix)}
 
 
 # --------------------------------------------------------------------------- #

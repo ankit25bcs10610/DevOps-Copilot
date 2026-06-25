@@ -25,5 +25,23 @@
   expect_keywords: ["checkout", "discount"]
   # Exercises the git/commit-history path (git_log on the repo server or the
   # GitHub commit tools), which the other cases never touch.
-  expect_tools_any: ["git_log", "list_recent_commits", "get_commit_diff"]
-  expect_tools_any_2: ["git_log", "list_recent_commits", "get_commit_diff", "read_file", "grep"]
+  expect_tools_any: ["git_log", "list_recent_commits", "get_commit_diff", "correlate_changes"]
+  expect_tools_any_2: ["git_log", "list_recent_commits", "get_commit_diff", "correlate_changes", "read_file", "grep"]
+
+- name: k8s_crashloop
+  question: "Are any checkout-svc pods unhealthy in Kubernetes, and why?"
+  expect_keywords: ["checkout", "crash"]
+  expect_tools_any: ["list_pods", "get_events"]
+  expect_tools_any_2: ["describe_pod", "get_deployment_status", "rollout_history", "get_events"]
+
+- name: sentry_top_error
+  question: "What is the top Sentry error affecting checkout and where is it thrown?"
+  expect_keywords: ["applyDiscount", "checkout.js"]
+  expect_tools_any: ["list_issues", "get_latest_event"]
+  expect_tools_any_2: ["list_issues", "get_latest_event", "get_issue"]
+
+- name: prior_incident_precedent
+  question: "Have we seen this checkout 5xx incident before? What was the fix?"
+  expect_keywords: ["discount", "rollback"]
+  expect_tools_any: ["search_incidents"]
+  expect_tools_any_2: ["search_incidents", "get_incident_record"]

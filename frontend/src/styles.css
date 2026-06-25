@@ -1892,11 +1892,52 @@ input {
 }
 .rca__dl:hover { border-color: var(--accent); background: var(--accent-soft); }
 
+.turn-foot {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 10px;
+}
 .turn-meta {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  margin-top: 10px;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.feedback {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.feedback__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  color: var(--text-faint);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.feedback__btn:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--accent);
+}
+.feedback__btn--on {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.feedback__btn:disabled {
+  cursor: default;
+}
+.feedback__thanks {
   font-size: 11px;
   color: var(--text-faint);
 }

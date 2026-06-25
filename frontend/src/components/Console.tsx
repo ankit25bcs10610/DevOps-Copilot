@@ -151,7 +151,8 @@ function TopBar({ onHome, onNew }: { onHome: () => void; onNew: () => void }) {
 }
 
 export function Console({ onHome }: { onHome: () => void }) {
-  const { turns, busy, awaitingApproval, send, respond, stop, newConversation } = useCopilot();
+  const { turns, busy, awaitingApproval, send, respond, stop, newConversation, sendFeedback } =
+    useCopilot();
   const endRef = useRef<HTMLDivElement>(null);
   const disabled = busy || awaitingApproval;
 
@@ -256,6 +257,11 @@ export function Console({ onHome }: { onHome: () => void }) {
                       onRetry={
                         turn.status === "error" && !disabled && turns[i - 1]?.role === "user"
                           ? () => send(turns[i - 1].text)
+                          : undefined
+                      }
+                      onFeedback={
+                        turn.role === "assistant"
+                          ? (rating) => sendFeedback(rating, turns[i - 1]?.text ?? "")
                           : undefined
                       }
                     />

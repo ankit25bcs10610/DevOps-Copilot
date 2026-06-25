@@ -172,6 +172,16 @@ export function useCopilot() {
     [threadId, applyEvent, patch]
   );
 
+  /** Record a thumbs up/down on an investigation (feeds the eval/learning loop). */
+  const sendFeedback = useCallback(
+    (rating: "up" | "down", question = "") => {
+      void api.submitFeedback(threadId, rating, "", question).catch(() => {
+        /* feedback is best-effort — never block the UI on it */
+      });
+    },
+    [threadId]
+  );
+
   /** Cancel the in-flight investigation (Stop button). */
   const stop = useCallback(() => {
     abortRef.current?.abort();
@@ -187,5 +197,5 @@ export function useCopilot() {
   // Block new input while a turn is paused for approval (the thread is mid-graph).
   const awaitingApproval = turns.some((t) => t.status === "awaiting_approval");
 
-  return { turns, busy, awaitingApproval, send, respond, stop, newConversation };
+  return { turns, busy, awaitingApproval, send, respond, stop, newConversation, sendFeedback };
 }

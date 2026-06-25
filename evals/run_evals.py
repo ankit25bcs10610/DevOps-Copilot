@@ -3,9 +3,12 @@
 Runs each case in testcases.yaml through a real agent session, then scores:
   - keyword recall: did the final answer mention the expected root-cause signals?
   - tool usage:     did the agent call the expected categories of tools?
+  - report verdict: did the structured RCA name the root cause + a valid severity?
   - latency:        wall-clock per case.
 
-Auto-approves any write action so runs are non-interactive.
+Auto-approves any write action so runs are non-interactive. Thumbs-down feedback
+captured in production (app/feedback.py, feedback.jsonl) is the natural source of
+new regression cases to append here.
 
 Usage:
     uv run python -m evals.run_evals
@@ -44,6 +47,7 @@ async def _run_case(case: dict) -> dict:
     # Unique thread id per run so a persistent checkpointer never resumes stale
     # state from a previous (or crashed) eval run.
     thread_id = f"eval-{case['name']}-{uuid.uuid4().hex[:8]}"
+    report: dict = {}
     async with CopilotSession(thread_id=thread_id) as session:
         result = await session.ask(case["question"])
         full_trace += result.trace
@@ -52,6 +56,7 @@ async def _run_case(case: dict) -> dict:
             result = await session.resume(approved=True, reason="auto-approved in eval")
             full_trace += result.trace
         answer = result.final_text
+        report = result.report or {}
 
     elapsed = time.perf_counter() - start
     answer_l = answer.lower()
@@ -64,12 +69,24 @@ async def _run_case(case: dict) -> dict:
         set(case["expect_tools_any_2"]) & used
     )
 
-    passed = kw_score >= 0.5 and tool_ok
+    # Score the structured RCA verdict: the root cause / summary should name at
+    # least one expected signal and the severity must be a valid tier.
+    report_ok = True
+    if case.get("expect_report", True):
+        verdict_text = f"{report.get('root_cause') or ''} {report.get('summary') or ''}".lower()
+        report_ok = (
+            bool(report)
+            and any(k.lower() in verdict_text for k in case["expect_keywords"])
+            and report.get("severity") in {"SEV1", "SEV2", "SEV3", "SEV4", "INFO"}
+        )
+
+    passed = kw_score >= 0.5 and tool_ok and report_ok
     return {
         "name": case["name"],
         "passed": passed,
         "keyword_recall": kw_score,
         "tools_ok": tool_ok,
+        "report_ok": report_ok,
         "tools_used": sorted(used),
         "latency_s": round(elapsed, 1),
     }
@@ -89,6 +106,7 @@ async def main() -> None:
     table.add_column("pass")
     table.add_column("kw recall")
     table.add_column("tools ok")
+    table.add_column("report ok")
     table.add_column("latency")
     for r in results:
         table.add_row(
@@ -96,6 +114,7 @@ async def main() -> None:
             "✅" if r["passed"] else "❌",
             f"{r['keyword_recall']:.0%}",
             "✅" if r["tools_ok"] else "❌",
+            "✅" if r["report_ok"] else "❌",
             f"{r['latency_s']}s",
         )
     console.print(table)
