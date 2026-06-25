@@ -19,7 +19,7 @@ from langchain_mcp_adapters.tools import load_mcp_tools as _load_session_tools
 from app import policy, runtime
 from app.config import get_settings
 
-_SERVERS = ("datadog", "repo", "github", "pagerduty")
+_SERVERS = ("datadog", "repo", "github", "pagerduty", "kubernetes", "sentry")
 
 
 def _server_config() -> dict:
@@ -65,7 +65,28 @@ def _server_config() -> dict:
             "command": py,
             "args": ["-m", "app.mcp.servers.pagerduty.server"],
             "transport": "stdio",
-            "env": {"PAGERDUTY_API_TOKEN": s.pagerduty_api_token},  # blank = offline fixtures
+            "env": {  # blank token = offline fixtures
+                "PAGERDUTY_API_TOKEN": s.pagerduty_api_token,
+                "PAGERDUTY_FROM_EMAIL": s.pagerduty_from_email,
+            },
+        },
+        "kubernetes": {
+            "command": py,
+            "args": ["-m", "app.mcp.servers.kubernetes.server"],
+            "transport": "stdio",
+            # KUBE_CONFIG_PATH enables live cluster mode; blank = offline fixtures.
+            "env": {"KUBE_CONFIG_PATH": s.kube_config_path, "KUBE_NAMESPACE": s.kube_namespace},
+        },
+        "sentry": {
+            "command": py,
+            "args": ["-m", "app.mcp.servers.sentry.server"],
+            "transport": "stdio",
+            # SENTRY_API_TOKEN enables live mode; blank = offline fixtures.
+            "env": {
+                "SENTRY_API_TOKEN": s.sentry_api_token,
+                "SENTRY_ORG": s.sentry_org,
+                "SENTRY_PROJECT": s.sentry_project,
+            },
         },
     }
 

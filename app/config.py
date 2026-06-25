@@ -50,6 +50,17 @@ class Settings(BaseSettings):
     # PagerDuty alerting connector. With a token it queries the real API;
     # otherwise the connector serves offline incident fixtures.
     pagerduty_api_token: str = ""
+    # Email identifying the actor for PagerDuty write actions (note/ack/resolve).
+    pagerduty_from_email: str = ""
+    # Kubernetes connector. With a kubeconfig path set it queries the real cluster
+    # (needs the `kubernetes` client); otherwise it serves offline pod/event fixtures.
+    kube_config_path: str = ""
+    kube_namespace: str = "default"
+    # Sentry connector. With an auth token it queries the real API; otherwise it
+    # serves offline issue/event fixtures. SENTRY_ORG/SENTRY_PROJECT scope live calls.
+    sentry_api_token: str = ""
+    sentry_org: str = ""
+    sentry_project: str = ""
 
     # --- Trigger / delivery (webhooks → investigate → Slack) ---
     # PagerDuty webhook → auto-start an investigation (HMAC-verified).

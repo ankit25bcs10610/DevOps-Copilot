@@ -150,6 +150,65 @@ def _trend(values: list[float]) -> str:
     return "rising" if values[-1] > values[0] else "falling" if values[-1] < values[0] else "flat"
 
 
+def _mean(xs: list[float]) -> float:
+    return sum(xs) / len(xs) if xs else 0.0
+
+
+def _stdev(xs: list[float]) -> float:
+    if len(xs) < 2:
+        return 0.0
+    m = _mean(xs)
+    return (sum((x - m) ** 2 for x in xs) / (len(xs) - 1)) ** 0.5
+
+
+def _detect_anomaly(values: list[float], z_threshold: float = 3.0) -> dict:
+    """Statistical anomaly + change-point detection over a metric series. Pure so
+    it's unit-testable. Compares the latest point to the baseline (all prior
+    points) via z-score, and locates the largest step change in the series.
+
+    Returns: anomaly (bool), latest, baseline_mean, z_score, direction,
+    change_point {index, from, to, delta}, and a short verdict.
+    """
+    clean = [float(v) for v in values if v is not None]
+    if len(clean) < 3:
+        return {"anomaly": False, "verdict": "insufficient data (need >= 3 points)",
+                "points": len(clean)}
+    baseline = clean[:-1]
+    latest = clean[-1]
+    mean = _mean(baseline)
+    std = _stdev(baseline)
+    if std > 0:
+        z = (latest - mean) / std
+        anomaly = abs(z) >= z_threshold
+    else:
+        # Flat baseline: any change from a perfectly steady signal is notable.
+        z = 0.0 if latest == mean else float("inf")
+        anomaly = latest != mean
+    deltas = [clean[i] - clean[i - 1] for i in range(1, len(clean))]
+    cp_rel = max(range(len(deltas)), key=lambda i: abs(deltas[i]))
+    cp_idx = cp_rel + 1
+    direction = "spike up" if latest > mean else "drop down" if latest < mean else "flat"
+    z_out = round(z, 2) if z not in (float("inf"), float("-inf")) else "inf"
+    return {
+        "anomaly": anomaly,
+        "latest": latest,
+        "baseline_mean": round(mean, 4),
+        "baseline_stdev": round(std, 4),
+        "z_score": z_out,
+        "direction": direction,
+        "change_point": {
+            "index": cp_idx,
+            "from": round(clean[cp_idx - 1], 4),
+            "to": round(clean[cp_idx], 4),
+            "delta": round(deltas[cp_rel], 4),
+        },
+        "verdict": (
+            f"anomalous {direction}: latest {latest} vs baseline mean {round(mean, 4)} "
+            f"(z={z_out})" if anomaly else "within normal range"
+        ),
+    }
+
+
 # --------------------------------------------------------------------------- #
 # Tools
 # --------------------------------------------------------------------------- #
@@ -277,6 +336,24 @@ def get_metric(service: str, metric: str) -> dict:
         "trend": _trend(values),
         "latest": values[-1] if values else None,
     }
+
+
+@mcp.tool()
+def detect_anomaly(service: str, metric: str) -> dict:
+    """Detect anomalies / change-points in a service metric.
+
+    Reads the metric series (live Datadog or offline fixture) and reports whether
+    the latest value is anomalous vs the baseline (z-score), the direction, and
+    the largest step change in the window — so the agent can anchor onset and tell
+    a real regression from noise instead of eyeballing the raw series.
+    """
+    data = get_metric(service, metric)
+    if data.get("error"):
+        return data
+    values = [p.get("value") for p in data.get("series", []) if isinstance(p, dict)]
+    result = _detect_anomaly([v for v in values if v is not None])
+    result.update({"service": service, "metric": metric})
+    return result
 
 
 @mcp.tool()

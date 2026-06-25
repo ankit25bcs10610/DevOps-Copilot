@@ -10,12 +10,15 @@ must route it through the human-in-the-loop approval node before calling it.
 Tools:
   - list_recent_commits:  recent commits on a branch
   - get_commit_diff:      the patch for a specific commit
+  - list_workflow_runs:   recent GitHub Actions CI runs (status/conclusion)
+  - get_failed_job_logs:  logs of the failed job(s) in a run ("why did the deploy fail")
   - create_pull_request:  (WRITE) open a PR with a proposed fix
 """
 
 from __future__ import annotations
 
 import os
+import re
 
 from mcp.server.fastmcp import FastMCP
 
@@ -132,6 +135,170 @@ def get_commit_diff(sha: str) -> str:
     )
     resp.raise_for_status()
     return resp.text
+
+
+_DEMO_WORKFLOW_RUNS = [
+    {
+        "id": 980001, "name": "CI", "event": "push", "branch": "main",
+        "status": "completed", "conclusion": "failure", "head_sha": "abc1234",
+        "created_at": "2026-06-23T09:50:00Z",
+        "html_url": "https://github.com/<owner>/<repo>/actions/runs/980001",
+        "title": "Add percentage discount support to checkout",
+    },
+    {
+        "id": 979544, "name": "CI", "event": "push", "branch": "main",
+        "status": "completed", "conclusion": "success", "head_sha": "9f8e7d6",
+        "created_at": "2026-06-22T16:10:00Z",
+        "html_url": "https://github.com/<owner>/<repo>/actions/runs/979544",
+        "title": "Refactor cart total calculation",
+    },
+]
+
+_DEMO_FAILED_JOB_LOG = """\
+> checkout-svc@1.8.0 test
+> jest
+
+ FAIL  test/checkout.test.js
+  ● applyDiscount › applies no discount when coupon is omitted
+
+    TypeError: Cannot read properties of undefined (reading 'total')
+
+      40 | function applyDiscount(cart, coupon) {
+      41 |   const subtotal = cart.total;
+    > 42 |   const pct = coupon.total;
+         |                      ^
+      43 |   return subtotal - subtotal * pct;
+
+      at applyDiscount (checkout.js:42:22)
+
+Tests: 1 failed, 7 passed, 8 total
+Error: Process completed with exit code 1.
+"""
+
+
+# --- "What changed" correlation -------------------------------------------- #
+# ~80% of incidents trace to a recent change, so ranking recent commits by their
+# textual overlap with the incident signal (failing symbol / file / keywords) is
+# one of the highest-ROI moves. Scoring is a pure helper so it's unit-testable.
+_STOP = {
+    "add", "the", "to", "for", "of", "and", "fix", "fixes", "update", "updates",
+    "support", "refactor", "bump", "in", "on", "a", "an", "with", "from", "into",
+}
+
+
+def _tokenize(text: str) -> set[str]:
+    return {t for t in re.findall(r"[a-zA-Z][a-zA-Z0-9_]{2,}", (text or "").lower())} - _STOP
+
+
+def _overlap(signal_tokens: set[str], message: str) -> list[str]:
+    """Tokens shared between the incident signal and a commit message, counting a
+    containment match (e.g. 'applyDiscount' ↔ 'discount') so symbol names hit."""
+    msg_tokens = _tokenize(message)
+    matched: set[str] = set()
+    for s in signal_tokens:
+        for m in msg_tokens:
+            if s == m or (len(s) >= 4 and len(m) >= 4 and (s in m or m in s)):
+                matched.add(m)
+    return sorted(matched)
+
+
+def _rank_commits(signal: str, commits: list[dict]) -> list[dict]:
+    """Score commits (newest-first) by overlap with the signal; return ranked,
+    stable-sorted so recency breaks ties."""
+    sig = _tokenize(signal)
+    scored = []
+    for i, c in enumerate(commits):
+        matched = _overlap(sig, c.get("message", ""))
+        scored.append({**c, "score": len(matched), "matched": matched, "_i": i})
+    scored.sort(key=lambda c: (-c["score"], c["_i"]))
+    for c in scored:
+        c.pop("_i", None)
+    return scored
+
+
+@mcp.tool()
+def correlate_changes(signal: str, branch: str = "main", max_results: int | str = 5) -> dict:
+    """Rank recent commits by how strongly they relate to an incident signal — the
+    'what changed' step. Pass the failing symbol/file/keywords (e.g.
+    "applyDiscount checkout.js discount 500") and get the most suspect commits
+    plus the top one's diff.
+
+    Returns {"suspects": [{sha, date, message, score, matched}], "top_diff": "..."}.
+    """
+    max_results = _as_int(max_results, 5)
+    commits = list_recent_commits(branch=branch, max_count=20)
+    # list_recent_commits returns an error-dict list in some failure modes.
+    if commits and isinstance(commits[0], dict) and commits[0].get("error"):
+        return {"error": commits[0]["error"]}
+    ranked = _rank_commits(signal, commits)[:max_results]
+    top_diff = ""
+    if ranked and ranked[0]["score"] > 0:
+        top_diff = get_commit_diff(ranked[0]["sha"])
+    return {"signal": signal, "suspects": ranked, "top_diff": top_diff}
+
+
+@mcp.tool()
+def list_workflow_runs(branch: str = "main", max_count: int | str = 10) -> list[dict]:
+    """List recent GitHub Actions runs (id, name, status, conclusion, head_sha) —
+    the 'did the last deploy/CI pass?' signal to correlate with an incident's onset."""
+    max_count = _as_int(max_count, 10)
+    if OFFLINE:
+        return _DEMO_WORKFLOW_RUNS[:max_count]
+    repo, err = _repo_or_error()
+    if err:
+        return [err]
+    import httpx
+
+    resp = httpx.get(
+        f"https://api.github.com/repos/{repo}/actions/runs",
+        params={"branch": branch, "per_page": max_count},
+        headers={"Authorization": f"Bearer {GITHUB_TOKEN}"},
+        timeout=15,
+    )
+    resp.raise_for_status()
+    return [
+        {
+            "id": r["id"], "name": r.get("name"), "event": r.get("event"),
+            "branch": r.get("head_branch"), "status": r.get("status"),
+            "conclusion": r.get("conclusion"), "head_sha": (r.get("head_sha") or "")[:7],
+            "created_at": r.get("created_at"), "html_url": r.get("html_url"),
+        }
+        for r in resp.json().get("workflow_runs", [])
+    ]
+
+
+@mcp.tool()
+def get_failed_job_logs(run_id: int | str, max_chars: int | str = 4000) -> dict:
+    """Return the log tail of the FAILED job(s) in a workflow run — answers
+    'why did the deploy/CI fail' and surfaces the failing test/stack trace."""
+    max_chars = _as_int(max_chars, 4000)
+    if OFFLINE:
+        return {
+            "run_id": _as_int(run_id, 0),
+            "failed_jobs": [{"name": "test", "conclusion": "failure",
+                             "log_tail": _DEMO_FAILED_JOB_LOG[:max_chars]}],
+        }
+    repo, err = _repo_or_error()
+    if err:
+        return err
+    import httpx
+
+    headers = {"Authorization": f"Bearer {GITHUB_TOKEN}"}
+    jobs = httpx.get(
+        f"https://api.github.com/repos/{repo}/actions/runs/{run_id}/jobs",
+        headers=headers, timeout=15,
+    )
+    jobs.raise_for_status()
+    failed = []
+    for job in jobs.json().get("jobs", []):
+        if job.get("conclusion") == "failure":
+            log = httpx.get(
+                f"https://api.github.com/repos/{repo}/actions/jobs/{job['id']}/logs",
+                headers=headers, timeout=20, follow_redirects=True,
+            )
+            tail = log.text[-max_chars:] if log.status_code < 400 else f"(could not fetch logs: {log.status_code})"
+            failed.append({"name": job.get("name"), "conclusion": "failure", "log_tail": tail})
+    return {"run_id": _as_int(run_id, 0), "failed_jobs": failed or [{"note": "no failed jobs in this run"}]}
 
 
 @mcp.tool()

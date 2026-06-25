@@ -23,6 +23,9 @@ Tools:
   - list_incidents:        current incidents (filter by status)
   - get_incident:          one incident's details
   - get_incident_alerts:   the alerts/signals that triggered an incident
+  - add_incident_note:     (WRITE/notify) post the copilot's findings to the timeline
+  - acknowledge_incident:  (WRITE/notify) acknowledge an incident
+  - resolve_incident:      (WRITE/approve) mark an incident resolved
 
 Run standalone for debugging:
     PAGERDUTY_API_TOKEN=... python -m app.mcp.servers.pagerduty.server
@@ -35,6 +38,8 @@ import os
 from mcp.server.fastmcp import FastMCP
 
 PAGERDUTY_API_TOKEN = os.environ.get("PAGERDUTY_API_TOKEN", "").strip()
+# PagerDuty write actions require a `From` header identifying the acting user.
+PAGERDUTY_FROM_EMAIL = os.environ.get("PAGERDUTY_FROM_EMAIL", "").strip()
 OFFLINE = not PAGERDUTY_API_TOKEN
 BASE_URL = "https://api.pagerduty.com"
 
@@ -171,6 +176,58 @@ def get_incident_alerts(incident_id: str) -> list[dict]:
             }
         )
     return out
+
+
+# --- Write tools (gated via app/policy.py → human approval/notify) --------- #
+def _write_headers() -> dict:
+    h = _headers()
+    if PAGERDUTY_FROM_EMAIL:
+        h["From"] = PAGERDUTY_FROM_EMAIL
+    return h
+
+
+@mcp.tool()
+def add_incident_note(incident_id: str, note: str) -> dict:
+    """(WRITE) Post a note to an incident's timeline — e.g. the copilot's RCA
+    summary, so responders see the findings where they're already looking."""
+    if OFFLINE:
+        return {"status": "note added (simulated — offline demo)", "incident_id": incident_id,
+                "note": note[:500]}
+    import httpx
+
+    resp = httpx.post(
+        f"{BASE_URL}/incidents/{incident_id}/notes",
+        headers=_write_headers(), json={"note": {"content": note}}, timeout=20,
+    )
+    resp.raise_for_status()
+    return {"status": "note added", "incident_id": incident_id}
+
+
+@mcp.tool()
+def acknowledge_incident(incident_id: str) -> dict:
+    """(WRITE) Acknowledge an incident (reversible)."""
+    return _set_status(incident_id, "acknowledged")
+
+
+@mcp.tool()
+def resolve_incident(incident_id: str) -> dict:
+    """(WRITE) Mark an incident resolved."""
+    return _set_status(incident_id, "resolved")
+
+
+def _set_status(incident_id: str, status: str) -> dict:
+    if OFFLINE:
+        return {"status": f"incident {status} (simulated — offline demo)", "incident_id": incident_id}
+    import httpx
+
+    resp = httpx.put(
+        f"{BASE_URL}/incidents/{incident_id}",
+        headers=_write_headers(),
+        json={"incident": {"type": "incident_reference", "status": status}},
+        timeout=20,
+    )
+    resp.raise_for_status()
+    return {"status": status, "incident_id": incident_id}
 
 
 if __name__ == "__main__":
