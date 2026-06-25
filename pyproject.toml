@@ -33,8 +33,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Extra LLM providers (anthropic + groq ship in the base install). Install with:
-#   uv pip install -e ".[providers]"
+# All five provider SDKs already ship in the base install above; this extra is a
+# convenience alias kept for backwards compatibility (no separate install needed).
 providers = [
     "langchain-openai>=0.2.0",      # OpenAI + DeepSeek (OpenAI-compatible)
     "langchain-google-genai>=2.0.0", # Google Gemini

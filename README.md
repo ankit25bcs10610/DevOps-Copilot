@@ -1,57 +1,82 @@
 <div align="center">
 
-# 🛠️ DevOps Copilot — AI Incident Command Center
+# DevOps Copilot
 
-**An autonomous AI agent that investigates production incidents end-to-end — pulling logs & metrics, reading code, finding the root cause, and proposing a fix — pausing for human approval before it ever writes.**
+**A production-hardened, autonomous incident-investigation agent** — a LangGraph state machine that pulls logs &amp; metrics, reads the code and git history, finds the root cause, and drafts a fix as a pull request, **pausing for human approval before it ever writes.**
 
-![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)
+[![CI](https://github.com/ankit25bcs10610/DevOps-Copilot/actions/workflows/ci.yml/badge.svg)](https://github.com/ankit25bcs10610/DevOps-Copilot/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-00b894.svg)](LICENSE)
+![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)
 ![LangGraph](https://img.shields.io/badge/LangGraph-stateful%20agent-1C3C3C)
 ![MCP](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-7C5CFF)
-![Claude](https://img.shields.io/badge/Claude-Opus%204.8-D97757)
-![License: MIT](https://img.shields.io/badge/License-MIT-00FFB3)
+
+**LangGraph 5-node cyclic graph** · **3 custom MCP servers / 11 tools** · **5 LLM providers** · **45-test suite in CI** · **one Docker image (SPA + API)**
 
 </div>
 
 <p align="center">
-  <img src="docs/screenshots/hero.png" alt="AI Incident Command Center — 3D hero" width="100%">
+  <img src="docs/screenshots/hero.png" alt="DevOps Copilot — 3D incident command center" width="100%">
 </p>
+
+---
+
+## Contents
+
+- [Overview](#overview)
+- [Highlights](#highlights)
+- [Interface](#interface)
+- [Architecture](#architecture)
+- [How the agent works](#how-the-agent-works)
+- [Human-in-the-loop, by design](#human-in-the-loop-by-design)
+- [Production hardening](#production-hardening)
+- [Quickstart](#quickstart)
+- [Configuration](#configuration)
+- [API surface](#api-surface)
+- [Deployment](#deployment)
+- [Scope &amp; scaling](#scope--scaling)
+- [Evaluation](#evaluation)
+- [Project structure](#project-structure)
+- [Tech stack](#tech-stack)
 
 ---
 
 ## Overview
 
-**DevOps Copilot** turns a one-line question — *"Why is the checkout API throwing 500s?"* — into a complete, evidence-backed root-cause analysis. A **LangGraph** state machine drives an LLM across a set of **MCP (Model Context Protocol)** tool servers: it plans, gathers logs/metrics, reads the code and git history, diagnoses the bug, and drafts a pull request — **stopping for your approval before any write action**.
+DevOps Copilot turns a one-line question — *"Why is the checkout API throwing 500s?"* — into an evidence-backed root-cause analysis. A **LangGraph** state machine drives an LLM across three **MCP (Model Context Protocol)** tool servers: it plans, gathers logs and metrics, reads the code and git history, diagnoses the bug, and proposes a pull request — **stopping for your approval before any write action.** Progress streams live to a React console over Server-Sent Events.
 
-It's a full-stack reference implementation of a modern agentic system:
+It is a full-stack reference implementation of a modern agentic system, with the production concerns — auth, rate limiting, health probes, structured logging, graceful shutdown, tests, CI, and a single deployable Docker image — actually built, not hand-waved.
 
-- **Backend** — Python · LangGraph · MCP · FastAPI, provider-switchable across **Anthropic (Claude Opus 4.8)**, **OpenAI**, **Google Gemini**, **Groq/Llama**, and **DeepSeek**.
-- **Frontend** — a React + TypeScript console with a real **WebGL 3D command center** (React Three Fiber), a live agent-activity timeline, and a human-in-the-loop approval UI.
-
----
-
-## ✨ Highlights
+## Highlights
 
 | | |
 |---|---|
-| 🧠 **Real agentic control flow** | A LangGraph graph with cycles, a reflection loop, a bounded iteration guard, and a resumable **`interrupt()`** for human approval. |
-| 🔌 **Three MCP servers (one fully custom)** | `logs-metrics`, `repo`, and `github` — discovered at runtime via `langchain-mcp-adapters`. Adding a fourth is one dict entry. |
-| ✋ **Human-in-the-loop** | Every write (e.g. opening a PR) pauses the graph; the reviewer sees the exact action and approves/rejects. State is checkpointed, so the pause survives across requests. |
-| 🔁 **Provider-switchable** | Anthropic (Claude Opus 4.8), OpenAI, Gemini, Groq/Llama, or DeepSeek — change it (and paste a key) **from the UI**, no restart. |
-| ⚙️ **Runtime configuration** | Connect a real **GitHub repo**, point the **repo / logs** servers at your own data, and switch models — all validated server-side, live. |
-| 🎨 **5 themes + 3D backdrop** | Cosmic, Midnight, Forest, Sunset, Light — the whole UI (and the 3D glow) recolors instantly. |
-| 🧪 **Production-hardened** | Bearer-token auth, per-IP rate limiting, body/message caps, `/healthz` + `/readyz` probes, graceful shutdown, structured JSON logs + request-ids, a pytest suite + CI, and a multi-stage Docker image that serves the SPA itself. See [`DEPLOY.md`](DEPLOY.md). |
+| **Human approval before writes** | Any tool call that mutates state (`create_pull_request`) is forced through a resumable LangGraph `interrupt()`; the routing can't bypass it, and the gate is covered by tests. See [Human-in-the-loop](#human-in-the-loop-by-design). |
+| **Three custom MCP servers** | `logs-metrics` (custom data tools), a **path-sandboxed** `repo` server, and a `github` server with **live API + offline-fixture** modes — all hand-built on FastMCP over stdio, discovered at runtime via `langchain-mcp-adapters`. |
+| **Live SSE streaming** | `/chat/stream` and `/approve/stream` emit one event per graph step (`EventSourceResponse`), powering the live activity timeline and a **Stop** button that cancels the run server-side by disconnecting the stream. |
+| **5 LLM providers, switchable live** | Anthropic (Claude Opus 4.8), OpenAI, Gemini, Groq/Llama, DeepSeek — change provider, model, or key **from the UI with no restart**, validated server-side. Adaptive thinking runs only on the main Opus model. |
+| **Production-hardened** | Bearer auth, per-IP rate limiting, request caps, `/healthz` + `/readyz`, graceful shutdown, structured JSON logs with request-ids, and a fail-closed production config. See [Production hardening](#production-hardening). |
+| **One Docker image** | A multi-stage build compiles the React + WebGL console and serves it from FastAPI — `docker compose up` gives you the whole product on `:8000`. |
 
----
+## Interface
 
-## 🏗️ Architecture
+<table>
+  <tr>
+    <td><img src="docs/screenshots/dashboard.png" alt="Console welcome — pipeline, suggested questions, live incident signal" width="100%"></td>
+    <td><img src="docs/screenshots/console.png" alt="Live investigation — activity timeline and the human-approval card" width="100%"></td>
+  </tr>
+</table>
+
+A React console with a live activity timeline, the human-in-the-loop approval card, a configurable sidebar (model · MCP servers · GitHub), and a WebGL command-center backdrop (React Three Fiber, lazy-loaded so it never blocks first paint).
+
+## Architecture
 
 ```
         ┌─────────────┐   ┌──────────────────────┐
-        │   CLI       │   │  React console + 3D  │      Interfaces
+        │     CLI     │   │  React console + 3D  │      Interfaces
         └──────┬──────┘   └───────────┬──────────┘
-               └──────────────┬───────┘  (FastAPI: /chat, /approve, /config, …)
-                              ▼
+               └──────────────┬───────┘   FastAPI: /chat[/stream], /approve[/stream],
+                              ▼                     /config, /model, /sources, /github, …
         ┌────────────────────────────────────────────┐
         │            LangGraph state machine          │
         │                                             │
@@ -63,75 +88,90 @@ It's a full-stack reference implementation of a modern agentic system:
         │   checkpointer: SQLite (resumable, per-thread)
         └────────────────────────┬───────────────────┘
                                  ▼   (MCP protocol, stdio)
-   ┌──────────────────┬───────────────────┬──────────────────────┐
-   │   logs-metrics   │       repo        │        github        │  MCP servers
-   │    (CUSTOM)      │  read_file/grep   │  commits / get_diff  │
-   │ search_logs      │  git_log/list_dir │  create_pull_request │
-   │ get_error_summary│                   │                      │
-   │ get_metric       │                   │                      │
-   └──────────────────┴───────────────────┴──────────────────────┘
+   ┌──────────────────────┬──────────────────────┬───────────────────────────┐
+   │ logs-metrics (custom)│  repo (sandboxed)    │  github (live / offline)  │  MCP
+   │ search_logs          │  list_dir  read_file │  list_recent_commits      │  servers
+   │ get_error_summary    │  grep      git_log   │  get_commit_diff          │
+   │ get_metric           │                      │  create_pull_request (W)  │
+   │ list_services        │                      │                           │
+   └──────────────────────┴──────────────────────┴───────────────────────────┘
 ```
 
 > The agent never imports a server directly — it only sees the tools each MCP server advertises. Full design notes in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
----
+### Concurrency &amp; state
 
-## 🔁 How the agent works
+The FastAPI layer is built for more than one user at a time:
+
+- A **writer-preferring reader/writer gate** lets agent turns run concurrently across threads while a config change (model / GitHub / sources / reset) drains in-flight turns and then runs exclusively — so a config swap can never tear a session down mid-investigation.
+- **Per-thread locks** serialize a single thread's turns without blocking unrelated ones.
+- A **bounded, LRU-evicted session pool** never drops a running or awaiting-approval thread; an evicted thread is transparently **reconstructed from the SQLite checkpointer** on its next request, so a pending approval survives.
+
+## How the agent works
 
 | Stage | What happens |
 |-------|--------------|
-| **1 · Plan** | Decompose the incident into an investigation plan (cheap/fast model). |
+| **1 · Plan** | Decompose the incident into a short investigation plan (cheap *fast* model, with prior-turn context on follow-ups). |
 | **2 · Investigate** | Call read-only MCP tools — search logs, read metrics, grep code, inspect git history. |
 | **3 · Approve** | If the agent wants to write (open a PR), the graph **pauses** for human approval. |
 | **4 · Diagnose** | Pinpoint the root cause and propose the fix, grounded in tool output. |
-| **5 · Reflect** | Decide whether the investigation is complete — loop or finish. |
+| **5 · Reflect** | Judge completeness (fast model). On *continue*, it hands the agent a **targeted gap note** so the next pass makes progress instead of repeating itself. |
 
----
+The loop is bounded: at the iteration cap the agent is invoked **without tools** and forced to summarize, so a run can never end on an unexecuted tool call. The graph's `recursion_limit` is derived from that cap, with a `GraphRecursionError` safety net.
 
-## 🖥️ The interface
+## Human-in-the-loop, by design
 
-<table>
-  <tr>
-    <td><img src="docs/screenshots/dashboard.png" alt="Bento dashboard" width="100%"></td>
-    <td><img src="docs/screenshots/how-it-works.png" alt="How it works" width="100%"></td>
-  </tr>
-</table>
+The defining safety property: **the agent asks permission before it changes anything.**
 
-A 3D **AI Incident Command Center** landing (holographic crystal core, hexagonal rings, particle field, volumetric lighting via React Three Fiber + bloom) leads into the **console** — a chat-driven incident investigator with a live activity timeline, the human-in-the-loop approval card, and a configurable sidebar (model, MCP servers, GitHub).
+- Write tools (`WRITE_TOOLS = {"create_pull_request"}`) route through `approval_node`, which calls LangGraph's `interrupt()` and surfaces **every** tool call in the batch with a per-call `write` flag — so a reviewer never approves a hidden write bundled with reads.
+- The routing (`app/graph/edges.py`) **cannot** reach the tool executor for a write without passing approval first.
+- On rejection, each `tool_call_id` is still answered with a `ToolMessage`, keeping conversation history valid, and control returns to the agent to find another path.
+- State is checkpointed, so the pause is **resumable across separate HTTP requests** (and even after the in-memory session is evicted). The gate is asserted in `tests/test_edges.py`.
 
----
+## Production hardening
 
-## 🚀 Quickstart
+Every item below is in the code today (file references included so it's verifiable).
 
-> Runs **fully offline** out of the box (no GitHub needed) — only an LLM key is required.
+**Reliability** — `/healthz` (liveness) and `/readyz` (readiness; returns 503 in production until an LLM key is configured); a 30s-bounded graceful-shutdown drain that closes MCP subprocesses cleanly; the concurrency model above. `app/api/main.py`, `app/config.py`
+
+**Security** — bearer-token auth with constant-time comparison (`hmac.compare_digest`); a per-IP rate limiter (memory-bounded, with a trusted-proxy guard for `X-Forwarded-For`); request-body and message-length caps returning `413`/`429` *inside* CORS so errors stay readable; a `/sources` path allowlist; **fail-closed startup** that refuses to boot `COPILOT_ENV=production` without an API token; and a prompt-injection guardrail instructing the model to treat all tool output as untrusted data, never instructions. `app/api/main.py`, `app/config.py`, `app/graph/prompts.py`
+
+**Observability** — structured JSON logs in production (text in dev), each record carrying a request-id propagated end-to-end via a contextvar; per-LLM-call token-usage logging (input / output / cache-read) for cost visibility; optional LangSmith tracing. `app/observability.py`, `app/graph/nodes.py`
+
+**Testing &amp; CI** — a **45-test pytest suite** covering the write-approval routing, the fail-closed config validator, the repo path-traversal/symlink sandbox, per-provider key isolation, recursion-limit derivation, and the auth / rate-limit / body-cap middleware — all without needing an LLM key. CI (`.github/workflows/ci.yml`) runs **ruff + pytest** and a **full frontend typecheck (`tsc -b --force`) + Vite build** on every push and PR.
+
+**Accessibility** — `prefers-reduced-motion` support (pauses the 3D render loop, static fallback), ARIA roles/labels and a screen-reader live region for the streaming trace, a skip-to-content link, WCAG-AA-checked contrast, and a cancellable Stop control with conversation persistence across reloads. `frontend/src/`
+
+## Quickstart
+
+> Runs **fully offline** out of the box (no GitHub needed) — only an LLM API key is required. All five providers ship in the base install.
 
 ### 1 · Backend
 
 ```bash
-# install (uv recommended)
 uv venv && uv pip install -e .
 
-# configure — pick a provider
 cp .env.example .env
-#   anthropic (default):  ANTHROPIC_API_KEY=sk-ant-...        (Claude Opus 4.8)
-#   or:  COPILOT_PROVIDER=groq  +  GROQ_API_KEY=gsk_...        (Llama 3.3)
+#   anthropic (default):  ANTHROPIC_API_KEY=sk-ant-...     (Claude Opus 4.8)
+#   or e.g.:  COPILOT_PROVIDER=groq   GROQ_API_KEY=gsk_...
+#   (openai · gemini · deepseek also supported — set COPILOT_PROVIDER + its key)
 ```
 
-**Try it from the CLI:**
+Try it from the CLI:
 
 ```bash
 uv run copilot "Why is the checkout API throwing 500 errors?"
 ```
 
-…and watch it plan, call MCP tools across services, find the null-handling bug in `sample_repo/checkout.js`, and ask permission before opening a PR.
+…and watch it plan, call MCP tools across services, find the bug in `sample_repo/checkout.js`, and ask permission before opening a PR.
 
-**Or run the API:**
+Or run the API (it also serves the built console once you've run the frontend build):
 
 ```bash
 uv run uvicorn app.api.main:app --reload      # http://localhost:8000
 ```
 
-### 2 · Frontend (web console + 3D)
+### 2 · Frontend (dev server with hot reload)
 
 ```bash
 cd frontend
@@ -140,34 +180,53 @@ cp .env.example .env          # VITE_API_URL=http://localhost:8000
 npm run dev                   # http://localhost:5173
 ```
 
----
+For a single-artifact run (SPA served by the backend), see [Deployment](#deployment).
 
-## ⚙️ Configuration
+## Configuration
 
-Set in `.env` (or change most of these live from the console UI):
+Set in `.env` (most are also changeable live from the console UI — those overrides are **in-memory only**, not persisted across restarts):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `COPILOT_PROVIDER` | `anthropic` | `anthropic` · `openai` · `gemini` · `groq` · `deepseek` |
-| `ANTHROPIC_API_KEY` | — | Required for the Anthropic provider (Claude) |
-| `OPENAI_API_KEY` | — | Required for the OpenAI provider |
-| `GEMINI_API_KEY` | — | Required for the Gemini provider |
-| `GROQ_API_KEY` | — | Required for the Groq provider |
-| `DEEPSEEK_API_KEY` | — | Required for the DeepSeek provider |
-| `COPILOT_MODEL` / `COPILOT_FAST_MODEL` | provider defaults | Optional model overrides |
-| `TARGET_REPO_PATH` | `./sample_repo` | Repo the `repo` MCP server reads |
+| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` / `GROQ_API_KEY` / `DEEPSEEK_API_KEY` | — | Key for the active provider |
+| `COPILOT_MODEL` / `COPILOT_FAST_MODEL` | per-provider defaults | Override the main / fast model (defaults live in `app/llm.py`) |
+| `TARGET_REPO_PATH` | `./sample_repo` | Repo the `repo` MCP server reads (confined by `COPILOT_SOURCES_ROOT`) |
 | `LOGS_DATA_PATH` | `./app/mcp/servers/logs_metrics/sample_data` | Logs/metrics data dir |
 | `GITHUB_TOKEN` / `GITHUB_REPO` | — | Real GitHub mode (else offline demo) |
-| `COPILOT_MAX_ITERATIONS` | `8` | Max agent steps per turn |
 | `COPILOT_ENV` | `development` | `production` fails closed unless `COPILOT_API_TOKEN` is set |
 | `COPILOT_API_TOKEN` | — | Bearer token guarding the API (empty = open, dev only) |
-| `CORS_ORIGINS` | — | Extra browser origins for the API |
+| `COPILOT_MAX_ITERATIONS` | `8` | Max agent steps per turn |
 
-> Production-only knobs (rate limits, body/message caps, trusted-proxy, etc.) live in [`.env.example`](.env.example) and [`DEPLOY.md`](DEPLOY.md).
+> Production knobs (rate limit, body/message caps, `COPILOT_MAX_SESSIONS`, trusted-proxy, CORS) are documented in [`.env.example`](.env.example) and [`DEPLOY.md`](DEPLOY.md).
 
----
+## API surface
 
-## 🧪 Evaluation
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /chat` · `POST /chat/stream` | Start an investigation (JSON, or live SSE) |
+| `POST /approve` · `POST /approve/stream` | Resume a paused approval with a decision |
+| `GET /config` · `POST /model/configure` | Inspect / switch provider, model, key |
+| `POST /github/connect` · `/github/disconnect` · `GET /github/status` | Live GitHub mode (validated server-side) |
+| `POST /sources/repo` · `/sources/logs` · `POST /reset` | Point tools at your data / revert overrides |
+| `GET /metrics` | Real metric series + error summary |
+| `GET /healthz` · `GET /readyz` | Liveness / readiness probes (auth-exempt) |
+
+## Deployment
+
+The image builds the SPA and serves it from FastAPI, so `http://localhost:8000` is the full product:
+
+```bash
+docker compose up --build
+```
+
+It runs as a non-root user, persists the SQLite checkpoint DB to a volume, and ships a `HEALTHCHECK`. Production setup — auth token, `COPILOT_ENV=production`, limits, same-origin auth — is in **[`DEPLOY.md`](DEPLOY.md)**.
+
+## Scope &amp; scaling
+
+The app is production-*hardened* but deliberately **single-instance** — one container with a SQLite checkpointer and in-process MCP subprocesses, which is the right shape for the single-artifact demo. The code is structured so each scaling step is a localized change, documented in [`DEPLOY.md` §6](DEPLOY.md): swap `make_checkpointer()` for the Postgres saver, move the rate limiter behind Redis/a gateway, and run the MCP servers as remote HTTP services. These are intentionally **not** implemented yet — framed as next steps, not claimed as done.
+
+## Evaluation
 
 ```bash
 uv run python -m evals.run_evals
@@ -175,55 +234,38 @@ uv run python -m evals.run_evals
 
 Runs cases from `evals/testcases.yaml` against a live agent session and scores **keyword recall**, **tool-usage correctness**, and **latency** (write actions auto-approved).
 
----
-
-## 🐳 Docker
-
-```bash
-docker compose up --build      # builds the SPA + API into one image, serves the whole app on :8000
-```
-
-The image builds the React SPA and serves it from FastAPI, so `http://localhost:8000` is the full product. Production config (auth token, env, limits) is in [`DEPLOY.md`](DEPLOY.md).
-
----
-
-## 📂 Project structure
+## Project structure
 
 ```
 app/
-  api/        FastAPI surface (/chat, /approve, /config, /model, /sources, /github)
+  api/        FastAPI surface — chat/approve (+SSE), config, model, sources, github, probes
   graph/      LangGraph: state, nodes, edges, builder, prompts
-  mcp/        client wiring + three MCP servers (logs-metrics is fully custom)
-  llm.py      provider-switchable model factory (Anthropic / OpenAI / Gemini / Groq / DeepSeek)
-  runtime.py  in-memory runtime overrides (model, sources, GitHub)
-  session.py  ties MCP + graph together, drives the approval flow
-  cli.py      interactive terminal UI
+  mcp/        client wiring + three custom MCP servers (FastMCP/stdio)
+  llm.py      provider factory (Anthropic / OpenAI / Gemini / Groq / DeepSeek)
+  runtime.py  in-memory runtime overrides (model, sources, GitHub) — not persisted
+  session.py  ties MCP + graph together; drives the approval flow; persistent MCP sessions
+  observability.py  structured logging + request-id + LangSmith
+  config.py   typed settings with fail-closed production validation
 frontend/
-  src/components/   Hero3D (R3F), Console, Sidebar, ModelConfig, GithubConnect, …
-  src/hooks/        useCopilot, useConfig (shared store), useTheme
+  src/components/   Hero3D (R3F, lazy-loaded), Console, Sidebar, ModelConfig, …
+  src/hooks/        useCopilot (streaming + cancel + persistence), useConfig, useTheme
+tests/        45-test pytest suite (API, config, edges, sandbox, session, nodes, …)
 evals/        eval harness + test cases
 sample_repo/  fixture repo with a planted bug
-docs/         architecture write-up + screenshots
 ```
 
----
+## Tech stack
 
-## 🧰 Tech stack
-
-**Agent:** LangGraph · `mcp` SDK · `langchain-mcp-adapters` · LangChain
+**Agent:** LangGraph · `mcp` (FastMCP) · `langchain-mcp-adapters` · LangChain
 **Models:** Claude Opus 4.8 (`langchain-anthropic`, adaptive thinking) · OpenAI · Gemini · Groq/Llama · DeepSeek
-**API:** FastAPI · SQLite checkpointer · bearer auth · rate limiting · health/readiness probes
-**Frontend:** React 18 · TypeScript · Vite · React Three Fiber + drei + postprocessing
+**API:** FastAPI · SQLite checkpointer · bearer auth · rate limiting · SSE · health/readiness probes
+**Frontend:** React 18 · TypeScript · Vite · React Three Fiber + drei + postprocessing (lazy-loaded)
+**Tooling:** uv · ruff · pytest · GitHub Actions · multi-stage Docker
 
 ---
 
-## 🗺️ Notes
-
-- The Groq **free tier** has a small daily token cap; for unlimited use, switch to **Claude Opus 4.8** (paste an Anthropic key in the console's *Change model* dialog).
-- Offline demo mode ships realistic fixtures, so the full flow works without any external accounts.
-
----
-
-## 📄 License
+<div align="center">
 
 [MIT](LICENSE) — built as a portfolio / learning project.
+
+</div>

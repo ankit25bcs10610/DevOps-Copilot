@@ -43,8 +43,9 @@ its stdio MCP servers in-process.
 
 Safety limits (sensible defaults; override only if needed):
 `COPILOT_RATE_LIMIT_PER_MIN` (120), `COPILOT_MAX_BODY_BYTES` (1000000),
-`COPILOT_MAX_MESSAGE_CHARS` (16000), `COPILOT_MAX_SESSIONS` (200),
-`COPILOT_MAX_ITERATIONS` (8). See `.env.example` for the full list.
+`COPILOT_MAX_MESSAGE_CHARS` (16000), `COPILOT_MAX_SESSIONS` (50),
+`COPILOT_TRUST_PROXY` (false), `COPILOT_MAX_ITERATIONS` (8). See `.env.example`
+for the full list.
 
 ## 3. Frontend ↔ backend auth (same-origin)
 
