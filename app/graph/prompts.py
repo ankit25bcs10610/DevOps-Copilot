@@ -21,6 +21,8 @@ acknowledge_incident, resolve_incident (WRITE)
   - kubernetes: list_pods, describe_pod, get_events, get_deployment_status, \
 rollout_history, scale_deployment/rollback_deployment/restart_deployment (WRITE)
   - sentry: list_issues, get_issue, get_latest_event
+  - memory: search_incidents, get_incident_record (search PRIOR incidents/runbooks \
+— check this early: "have we seen this before?")
   - repo: list_dir, read_file, grep, git_log
   - github: list_recent_commits, get_commit_diff, correlate_changes, \
 list_workflow_runs, get_failed_job_logs, create_pull_request (WRITE)

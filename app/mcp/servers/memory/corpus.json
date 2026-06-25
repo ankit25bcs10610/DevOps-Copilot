@@ -1,0 +1,93 @@
+[
+  {
+    "id": "INC-2026-0412",
+    "title": "checkout-svc 5xx spike after discount feature deploy",
+    "date": "2026-04-12",
+    "service": "checkout-svc",
+    "tags": ["5xx", "checkout", "discount", "null-deref", "deploy", "typeerror"],
+    "summary": "checkout-svc returned 500s minutes after a deploy that added percentage-discount support. A TypeError was thrown reading a property of an undefined coupon object on the checkout path.",
+    "root_cause": "applyDiscount read coupon.total without guarding against a missing coupon, so requests without a coupon threw 'Cannot read properties of undefined'.",
+    "resolution": "Rolled back the deploy to restore service, then shipped a fix guarding the coupon (default to 0% discount when absent) with a regression test.",
+    "runbook": [
+      "Confirm the error signature in logs/Sentry (TypeError ... applyDiscount).",
+      "Identify the suspect deploy via rollout history / recent commits.",
+      "Roll back the deployment to the last good revision to stop the bleeding.",
+      "Patch the null-guard, add a regression test, redeploy."
+    ]
+  },
+  {
+    "id": "INC-2026-0335",
+    "title": "inventory-svc latency from an unindexed query",
+    "date": "2026-03-19",
+    "service": "inventory-svc",
+    "tags": ["latency", "p95", "database", "slow-query", "inventory"],
+    "summary": "inventory-svc p95 latency climbed past SLO after a catalog growth spurt; a stock-lookup query was doing a full table scan.",
+    "root_cause": "A missing composite index on (warehouse_id, sku) made the hot stock-lookup query O(n) as the table grew.",
+    "resolution": "Added the composite index online; p95 returned to baseline within minutes.",
+    "runbook": [
+      "Pull p95 latency trend and confirm the regressing endpoint.",
+      "Capture a slow query sample / EXPLAIN plan.",
+      "Add the missing index online, verify the plan uses it."
+    ]
+  },
+  {
+    "id": "INC-2026-0288",
+    "title": "payment-svc pods OOMKilled under load",
+    "date": "2026-02-27",
+    "service": "payment-svc",
+    "tags": ["oomkilled", "memory-leak", "kubernetes", "crashloop", "payment"],
+    "summary": "payment-svc pods were OOMKilled and entered CrashLoopBackOff during a traffic peak after a release that buffered full responses in memory.",
+    "root_cause": "A new code path accumulated response bodies in an unbounded in-memory list, leaking memory until the container hit its limit.",
+    "resolution": "Rolled back, then streamed responses instead of buffering; raised the memory request/limit as a stopgap.",
+    "runbook": [
+      "Check pod events for OOMKilled and restart counts.",
+      "Correlate onset with the most recent rollout.",
+      "Roll back if a recent deploy is implicated; profile memory before re-releasing."
+    ]
+  },
+  {
+    "id": "INC-2026-0201",
+    "title": "auth-svc 401 storm after certificate rotation",
+    "date": "2026-01-30",
+    "service": "auth-svc",
+    "tags": ["401", "auth", "certificate", "jwt", "rotation"],
+    "summary": "A wave of 401s hit all services after an auth-svc certificate rotation; tokens signed with the new key failed validation downstream.",
+    "root_cause": "The new signing key's public half wasn't distributed to verifiers before the cutover, so valid tokens failed signature checks.",
+    "resolution": "Published the new JWKS to all verifiers and staggered future rotations with an overlap window.",
+    "runbook": [
+      "Check for a recent cert/key rotation change.",
+      "Verify the JWKS endpoint serves the current signing key.",
+      "Roll the key back or push the new public key, then re-test auth."
+    ]
+  },
+  {
+    "id": "INC-2025-1190",
+    "title": "checkout-svc cart total computed as NaN",
+    "date": "2025-12-04",
+    "service": "checkout-svc",
+    "tags": ["checkout", "nan", "cart", "pricing", "validation"],
+    "summary": "Some checkouts showed a NaN total after a pricing refactor when an item lacked a numeric price.",
+    "root_cause": "calcSubtotal multiplied price*qty without coercing/validating price, so a missing price produced NaN that propagated to the total.",
+    "resolution": "Added input validation and a default price of 0 with an alert on missing prices.",
+    "runbook": [
+      "Reproduce with a cart containing an item missing a price.",
+      "Add validation/coercion at the subtotal step.",
+      "Backfill missing prices and alert on them."
+    ]
+  },
+  {
+    "id": "INC-2025-1042",
+    "title": "gateway 5xx from a bad config rollout",
+    "date": "2025-11-08",
+    "service": "api-gateway",
+    "tags": ["5xx", "config", "gateway", "rollout", "timeout"],
+    "summary": "The API gateway returned 5xx after a config push set an upstream timeout to 0, failing every request fast.",
+    "root_cause": "A templating error rendered the upstream timeout as 0ms, so all proxied requests timed out immediately.",
+    "resolution": "Reverted the config, added a validation check rejecting non-positive timeouts in CI.",
+    "runbook": [
+      "Diff the most recent config rollout.",
+      "Revert to the last known-good config.",
+      "Add a CI guard for invalid config values."
+    ]
+  }
+]

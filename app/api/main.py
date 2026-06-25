@@ -93,6 +93,12 @@ MCP_CATALOG = [
         "custom": True,
         "tools": ["list_issues", "get_issue", "get_latest_event"],
     },
+    {
+        "name": "memory",
+        "label": "Incident memory",
+        "custom": True,
+        "tools": ["search_incidents", "get_incident_record"],
+    },
 ]
 
 # thread_id -> live session (insertion-ordered; used for LRU eviction).
