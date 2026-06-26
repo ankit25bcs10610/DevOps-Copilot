@@ -357,10 +357,17 @@ async def require_auth(request: Request) -> None:
     # this request and read by runtime.py / the agent for the rest of the call.
     if s.copilot_multi_tenant:
         provided = request.headers.get("authorization", "")
-        key = provided[7:].strip() if provided.startswith("Bearer ") else provided.strip()
-        resolved = await tenant_auth.resolve(key)
+        token = provided[7:].strip() if provided.startswith("Bearer ") else provided.strip()
+        # A `dcp_…` value is a tenant API key; anything with two dots is a JWT
+        # (Supabase/SSO login). Both resolve to the same TenantConfig + actor.
+        if token.startswith("dcp_"):
+            resolved = await tenant_auth.resolve(token)
+        elif token.count(".") == 2:
+            resolved = await tenant_auth.resolve_jwt(token)
+        else:
+            resolved = None
         if resolved is None:
-            raise HTTPException(401, "Invalid or revoked API key.")
+            raise HTTPException(401, "Invalid or revoked credential.")
         cfg, actor = resolved
         tenant_context.set_tenant(cfg)
         tenant_context.set_actor(actor)

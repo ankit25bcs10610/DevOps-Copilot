@@ -153,6 +153,27 @@ def test_admin_org_summary(mt):
     assert r.json()["plan"] == "team"
 
 
+def test_supabase_jwt_login_maps_member_to_org(mt, monkeypatch):
+    from app.tenancy import supabase_auth
+
+    async def add_member():
+        store = tenant_auth.get_store()
+        u = await store.create_user("dev@acme.com")
+        await store.add_member(mt["org_a"], u.id, "responder")
+
+    asyncio.run(add_member())
+    # stub JWT verification (real verification is covered in test_supabase_auth.py)
+    monkeypatch.setattr(supabase_auth, "verify_jwt",
+                        lambda t: {"email": "dev@acme.com", "aud": "authenticated"})
+    # a 2-dot token routes to the JWT path; the member is authorized
+    r = mt["client"].get("/config", headers={"Authorization": "Bearer aaa.bbb.ccc"})
+    assert r.status_code == 200
+
+    # an authenticated but non-member identity is rejected
+    monkeypatch.setattr(supabase_auth, "verify_jwt", lambda t: {"email": "stranger@nope.com"})
+    assert mt["client"].get("/config", headers={"Authorization": "Bearer aaa.bbb.ccc"}).status_code == 401
+
+
 def test_billing_requires_owner(mt):
     c = mt["client"]
     # admin cannot change plan (manage_billing => owner)

@@ -74,3 +74,26 @@ async def resolve(api_key: str) -> tuple[TenantConfig, str] | None:
     secrets = await store.get_integration_secrets(org.id)
     cfg = build_tenant_config(org, key.role, secrets)
     return cfg, f"key:{key.id[:8]}"
+
+
+async def resolve_jwt(token: str) -> tuple[TenantConfig, str] | None:
+    """Validate a Supabase/SSO JWT and map it to a TenantConfig via the user's
+    org membership. Returns (config, actor) or None (bad token / not a member)."""
+    from app.tenancy import supabase_auth
+
+    claims = supabase_auth.verify_jwt(token)
+    if not claims:
+        return None
+    email = (claims.get("email") or "").strip().lower()
+    if not email:
+        return None
+    store = get_store()
+    membership = await store.get_membership_by_email(email)
+    if not membership:
+        return None  # authenticated, but not a member of any org
+    org_id, role = membership
+    org = await store.get_org(org_id)
+    if not org:
+        return None
+    secrets = await store.get_integration_secrets(org_id)
+    return build_tenant_config(org, role, secrets), f"user:{email}"

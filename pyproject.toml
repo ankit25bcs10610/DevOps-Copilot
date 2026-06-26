@@ -30,6 +30,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "rich>=13.9.0",
     "pyyaml>=6.0",
+    "pyjwt[crypto]>=2.9.0",  # verify Supabase / OIDC JWTs against a JWKS
 ]
 
 [project.optional-dependencies]

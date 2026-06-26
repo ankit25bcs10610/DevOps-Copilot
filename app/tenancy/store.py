@@ -182,6 +182,20 @@ class TenantStore:
             await db.commit()
         return m
 
+    async def get_membership_by_email(self, email: str) -> tuple[str, str] | None:
+        """Resolve a user's (org_id, role) by email — used to map a Supabase/SSO
+        identity to a tenant. Returns the first membership, or None if not a member."""
+        import aiosqlite
+
+        async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute(
+                "SELECT m.org_id, m.role FROM memberships m JOIN users u ON u.id = m.user_id "
+                "WHERE u.email = ? LIMIT 1",
+                (email.strip().lower(),),
+            ) as cur:
+                row = await cur.fetchone()
+        return (row[0], row[1]) if row else None
+
     async def count_members(self, org_id: str) -> int:
         import aiosqlite
 
