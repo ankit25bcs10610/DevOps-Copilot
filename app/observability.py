@@ -87,25 +87,49 @@ def setup_langsmith() -> None:
     log.info("LangSmith tracing enabled (project=%s)", s.langchain_project)
 
 
-def setup_datadog_apm() -> None:
-    """Enable Datadog APM self-instrumentation when DD_TRACE_ENABLED is set.
+def _truthy(value: str) -> bool:
+    return value.strip().lower() in ("1", "true", "yes", "on")
 
-    This traces the copilot ITSELF (FastAPI requests, httpx calls, etc.) to a
-    Datadog agent — distinct from the `datadog` MCP connector, which *reads* your
-    services' logs/metrics. ddtrace honors DD_SERVICE / DD_ENV / DD_AGENT_HOST from
-    the environment. No-op (with a warning) if disabled or ddtrace isn't installed."""
-    if not get_settings().dd_trace_enabled:
+
+def setup_datadog_apm() -> None:
+    """Enable Datadog APM and/or LLM Observability for the copilot.
+
+    - **APM** (`DD_TRACE_ENABLED=true`) traces the app itself (FastAPI/httpx/…).
+    - **LLM Observability** (`DD_LLMOBS_ENABLED=1`) traces the agent's LLM calls —
+      prompts, completions, tokens, and tool/agent spans — via ddtrace's LangChain
+      integration. Honors DD_LLMOBS_ML_APP / DD_API_KEY / DD_SITE; if a key is set
+      and no agent is configured, it sends agentless (direct to Datadog intake).
+
+    Both are distinct from the `datadog` MCP connector (which *reads* your services'
+    logs/metrics). No-op (with a warning) when disabled or ddtrace isn't installed."""
+    llmobs_on = _truthy(os.environ.get("DD_LLMOBS_ENABLED", ""))
+    if not (get_settings().dd_trace_enabled or llmobs_on):
         return
     os.environ.setdefault("DD_SERVICE", "devops-copilot")
     os.environ.setdefault("DD_ENV", get_settings().copilot_env)
     try:
         import ddtrace.auto  # noqa: F401  — auto-instruments imported libraries on import
     except ImportError:
-        log.warning("DD_TRACE_ENABLED is set but ddtrace is not installed "
+        log.warning("Datadog tracing requested but ddtrace is not installed "
                     "(uv pip install ddtrace, or the 'apm' extra)")
         return
-    log.info("Datadog APM enabled (service=%s env=%s)",
-             os.environ.get("DD_SERVICE"), get_settings().copilot_env)
+
+    if llmobs_on:
+        try:
+            from ddtrace.llmobs import LLMObs
+
+            # Agentless when an API key is present and no agent host is configured.
+            if os.environ.get("DD_API_KEY") and not os.environ.get("DD_AGENT_HOST"):
+                os.environ.setdefault("DD_LLMOBS_AGENTLESS_ENABLED", "1")
+            ml_app = os.environ.get("DD_LLMOBS_ML_APP", "devops-copilot")
+            LLMObs.enable(ml_app=ml_app)
+            log.info("Datadog LLM Observability enabled (ml_app=%s site=%s)",
+                     ml_app, os.environ.get("DD_SITE", "datadoghq.com"))
+        except Exception:  # noqa: BLE001 — never let observability setup break startup
+            log.exception("failed to enable Datadog LLM Observability")
+    else:
+        log.info("Datadog APM enabled (service=%s env=%s)",
+                 os.environ.get("DD_SERVICE"), get_settings().copilot_env)
 
 
 def setup_sentry() -> None:
