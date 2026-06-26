@@ -12,6 +12,7 @@ from app.graph.nodes import (
     _history_digest,
     _over_token_budget,
     _parse_report,
+    _prior_incidents_block,
     _render_postmortem,
     _verify_grounding,
 )
@@ -36,6 +37,18 @@ def test_history_digest_keeps_prior_qa_drops_tools_and_current_request():
 def test_history_digest_empty_on_first_turn():
     assert _history_digest({"messages": [HumanMessage(content="first question")]}) == ""
     assert _history_digest({"messages": []}) == ""
+
+
+def test_prior_incidents_block_surfaces_the_precedent():
+    block = _prior_incidents_block("checkout-svc 5xx errors TypeError applyDiscount discount")
+    assert "PRIOR incidents" in block
+    assert "discount" in block.lower()
+    # phrased as something to verify, not a fact to assume
+    assert "verify" in block.lower()
+
+
+def test_prior_incidents_block_empty_on_no_match():
+    assert _prior_incidents_block("xylophone unicorn zzzznomatch") == ""
 
 
 # --- RCA report synthesis (pure parsing / rendering) ----------------------- #

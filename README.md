@@ -119,7 +119,7 @@ The FastAPI layer is built for more than one user at a time:
 
 | Stage | What happens |
 |-------|--------------|
-| **1 · Plan** | Decompose the incident into a short investigation plan (cheap *fast* model, with prior-turn context on follow-ups). |
+| **1 · Plan** | Decompose the incident into a short investigation plan (cheap *fast* model), **warm-started with similar prior incidents** from the memory corpus (verify-don't-assume) and prior-turn context on follow-ups. |
 | **2 · Investigate** | Call read-only MCP tools — search prior incidents, read logs/metrics/traces, inspect Kubernetes + Sentry, grep code, correlate recent changes. Every result is injection-scanned before the agent sees it. |
 | **3 · Approve** | If the agent wants a consequential action (open a PR, scale/rollback a deployment, resolve an incident), the graph **pauses** for human approval — with a risk tier and impact preview. |
 | **4 · Diagnose** | Pinpoint the root cause and propose the fix, grounded in tool output. |
@@ -272,6 +272,7 @@ app/
   guardrails.py     prompt-injection detection + provenance-boxing of tool output
   audit.py / feedback.py   queryable audit trail + thumbs up/down capture
   replay.py   VCR-style record/replay cassette layer for deterministic offline evals
+  incident_memory.py  shared BM25 search over prior incidents (memory server + planner warm-start)
   secrets_vault.py  Fernet secret-vault primitive (multi-tenant foundation)
   llm.py      provider factory (Anthropic / OpenAI / Gemini / Groq / DeepSeek)
   runtime.py  in-memory runtime overrides (model, sources, GitHub) — not persisted

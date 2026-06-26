@@ -13,7 +13,7 @@ import re
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.types import interrupt
 
-from app import policy
+from app import incident_memory, policy
 from app.config import get_settings
 from app.graph.prompts import AGENT_SYSTEM, PLANNER_SYSTEM, REFLECT_SYSTEM, REPORT_SYSTEM
 from app.graph.state import AgentState
@@ -80,6 +80,24 @@ def _history_digest(state: AgentState, max_exchanges: int = 4, max_chars: int = 
     return "\n".join(lines[-(max_exchanges * 2):])
 
 
+def _prior_incidents_block(request: str, limit: int = 2) -> str:
+    """Warm-start context: prior similar incidents from the incident-memory corpus,
+    so the plan benefits from institutional memory ('have we seen this before?')
+    automatically. Phrased as priors to VERIFY, not facts to assume, to avoid
+    anchoring the agent on a stale match. Best-effort: never breaks planning."""
+    try:
+        hits = incident_memory.search(request, limit=limit)
+    except Exception:  # noqa: BLE001
+        return ""
+    if not hits:
+        return ""
+    lines = ["Possibly-related PRIOR incidents (verify against live evidence, don't assume):"]
+    for h in hits:
+        rc = h.get("root_cause", "?")
+        lines.append(f"- {h.get('title', h.get('id'))} — past root cause: {rc}")
+    return "\n".join(lines)
+
+
 def make_plan_node():
     """Node: turn the request into a short investigation plan.
 
@@ -92,7 +110,10 @@ def make_plan_node():
         # On a follow-up, give the planner what was already investigated so it
         # builds on the conversation instead of re-planning from scratch.
         digest = _history_digest(state)
+        priors = _prior_incidents_block(request)
         human = f"Conversation so far:\n{digest}\n\nNew request:\n{request}" if digest else request
+        if priors:
+            human = f"{priors}\n\n{human}"
         resp = llm.invoke(
             [SystemMessage(content=PLANNER_SYSTEM), HumanMessage(content=human)]
         )
