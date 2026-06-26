@@ -19,12 +19,13 @@ from app.tenancy import auth as tenant_auth
 async def _provision(store):
     await store.setup()
     org_a = await store.create_org("Acme", plan="team")
+    owner_key, _ = await store.issue_api_key(org_a.id, "k-owner", role="owner")
     admin_key, _ = await store.issue_api_key(org_a.id, "k-admin", role="admin")
     viewer_key, _ = await store.issue_api_key(org_a.id, "k-view", role="viewer")
     org_b = await store.create_org("Beta", plan="free")
-    b_key, _ = await store.issue_api_key(org_b.id, "k-b", role="responder")
-    return {"admin": admin_key, "viewer": viewer_key, "b": b_key,
-            "org_a": org_a.id, "org_b": org_b.id}
+    b_key, b_rec = await store.issue_api_key(org_b.id, "k-b", role="responder")
+    return {"owner": owner_key, "admin": admin_key, "viewer": viewer_key, "b": b_key,
+            "b_key_id": b_rec.id, "org_a": org_a.id, "org_b": org_b.id}
 
 
 @pytest.fixture
@@ -112,3 +113,50 @@ def test_revoked_key_is_unauthorized(mt):
 
     asyncio.run(revoke())
     assert mt["client"].get("/config", headers=_auth(mt["viewer"])).status_code == 401
+
+
+# --- admin / tenant-management endpoints (Phase 5) ------------------------ #
+def test_admin_create_key_and_use_it(mt):
+    c = mt["client"]
+    r = c.post("/admin/api-keys", json={"name": "ci", "role": "responder"},
+               headers=_auth(mt["admin"]))
+    assert r.status_code == 200
+    new_key = r.json()["api_key"]
+    assert new_key.startswith("dcp_")
+    # the freshly-minted key authenticates
+    assert c.get("/config", headers=_auth(new_key)).status_code == 200
+
+
+def test_admin_revoke_is_org_scoped(mt):
+    c = mt["client"]
+    # admin (org A) cannot revoke org B's key id -> 404
+    assert c.request("DELETE", f"/admin/api-keys/{mt['b_key_id']}",
+                     headers=_auth(mt["admin"])).status_code == 404
+
+
+def test_viewer_cannot_manage_keys(mt):
+    assert mt["client"].post("/admin/api-keys", json={}, headers=_auth(mt["viewer"])).status_code == 403
+
+
+def test_admin_set_and_list_integration(mt):
+    pytest.importorskip("cryptography")
+    c = mt["client"]
+    assert c.post("/admin/integrations", json={"name": "DD_API_KEY", "value": "secret"},
+                  headers=_auth(mt["admin"])).status_code == 200
+    body = c.get("/admin/integrations", headers=_auth(mt["admin"])).json()
+    assert "DD_API_KEY" in body["integrations"]  # names only, never values
+
+
+def test_admin_org_summary(mt):
+    r = mt["client"].get("/admin/org", headers=_auth(mt["admin"]))
+    assert r.status_code == 200
+    assert r.json()["plan"] == "team"
+
+
+def test_billing_requires_owner(mt):
+    c = mt["client"]
+    # admin cannot change plan (manage_billing => owner)
+    assert c.patch("/admin/plan", json={"plan": "enterprise"}, headers=_auth(mt["admin"])).status_code == 403
+    # owner can
+    r = c.patch("/admin/plan", json={"plan": "enterprise"}, headers=_auth(mt["owner"]))
+    assert r.status_code == 200 and r.json()["plan"] == "enterprise"

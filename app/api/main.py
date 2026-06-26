@@ -454,6 +454,26 @@ class FeedbackRequest(BaseModel):
     question: str = ""
 
 
+# --- admin / tenant-management request bodies (multi-tenant) --------------- #
+class CreateApiKeyRequest(BaseModel):
+    name: str = ""
+    role: str = "responder"
+
+
+class AddMemberRequest(BaseModel):
+    email: str
+    role: str = "viewer"
+
+
+class SetIntegrationRequest(BaseModel):
+    name: str
+    value: str
+
+
+class SetPlanRequest(BaseModel):
+    plan: str
+
+
 class ChatResponse(BaseModel):
     thread_id: str
     status: str  # "completed" | "awaiting_approval" | "error"
@@ -957,6 +977,111 @@ async def get_audit(limit: int = 100, event_prefix: str = "") -> dict:
     like every other route — the read half of the compliance requirement."""
     limit = max(1, min(limit, 1000))
     return {"events": audit.recent(limit=limit, event_prefix=event_prefix)}
+
+
+# --------------------------------------------------------------------------- #
+# Admin / tenant self-management (multi-tenant only; RBAC-gated).
+# Org provisioning (the first owner key) is done out-of-band via the CLI:
+#   python -m app.cli provision-org --name "Acme" --email owner@acme.com
+# --------------------------------------------------------------------------- #
+def _current_org_id() -> str:
+    cfg = tenant_context.get_tenant()
+    if cfg is None:
+        raise HTTPException(400, "Admin endpoints require multi-tenant mode + a tenant API key.")
+    return cfg.org_id
+
+
+@app.get("/admin/org", dependencies=[Depends(require_perm("view"))])
+async def admin_org() -> dict:
+    org_id = _current_org_id()
+    store = tenant_auth.get_store()
+    org = await store.get_org(org_id)
+    if org is None:
+        raise HTTPException(404, "org not found")
+    return {
+        "id": org.id, "name": org.name, "plan": org.plan,
+        "members": await store.count_members(org_id),
+        "active_api_keys": await store.count_active_api_keys(org_id),
+        "integrations": await store.count_integrations(org_id),
+    }
+
+
+@app.get("/admin/api-keys", dependencies=[Depends(require_perm("manage_api_keys"))])
+async def admin_list_api_keys() -> dict:
+    org_id = _current_org_id()
+    keys = await tenant_auth.get_store().list_api_keys(org_id)
+    return {"api_keys": [
+        {"id": k.id, "prefix": k.prefix, "name": k.name, "role": k.role,
+         "created_at": k.created_at, "last_used_at": k.last_used_at, "active": k.active}
+        for k in keys
+    ]}
+
+
+@app.post("/admin/api-keys", dependencies=[Depends(require_perm("manage_api_keys"))])
+async def admin_create_api_key(req: CreateApiKeyRequest) -> dict:
+    org_id = _current_org_id()
+    store = tenant_auth.get_store()
+    cfg = tenant_context.get_tenant()
+    plan = cfg.plan if cfg else "free"
+    if not tn_models.within_quota(plan, "api_keys", await store.count_active_api_keys(org_id)):
+        raise HTTPException(402, "Active API-key quota reached for your plan.")
+    plaintext, rec = await store.issue_api_key(
+        org_id, req.name, role=tn_models.normalize_role(req.role)
+    )
+    audit.record("apikey.created", org=org_id, key_id=rec.id, role=rec.role)
+    return {"api_key": plaintext, "id": rec.id, "role": rec.role, "name": rec.name,
+            "note": "Store this now — the secret is shown only once."}
+
+
+@app.delete("/admin/api-keys/{key_id}", dependencies=[Depends(require_perm("manage_api_keys"))])
+async def admin_revoke_api_key(key_id: str) -> dict:
+    org_id = _current_org_id()
+    revoked = await tenant_auth.get_store().revoke_api_key(key_id, org_id=org_id)
+    if not revoked:
+        raise HTTPException(404, "key not found (or already revoked) in this org")
+    audit.record("apikey.revoked", org=org_id, key_id=key_id)
+    return {"status": "revoked", "id": key_id}
+
+
+@app.post("/admin/members", dependencies=[Depends(require_perm("manage_members"))])
+async def admin_add_member(req: AddMemberRequest) -> dict:
+    org_id = _current_org_id()
+    store = tenant_auth.get_store()
+    cfg = tenant_context.get_tenant()
+    plan = cfg.plan if cfg else "free"
+    if not tn_models.within_quota(plan, "seats", await store.count_members(org_id)):
+        raise HTTPException(402, "Seat quota reached for your plan.")
+    user = await store.create_user(req.email)
+    m = await store.add_member(org_id, user.id, tn_models.normalize_role(req.role))
+    audit.record("member.added", org=org_id, role=m.role)
+    return {"email": user.email, "role": m.role}
+
+
+@app.get("/admin/integrations", dependencies=[Depends(require_perm("manage_integrations"))])
+async def admin_list_integrations() -> dict:
+    org_id = _current_org_id()
+    secrets = await tenant_auth.get_store().get_integration_secrets(org_id)
+    return {"integrations": sorted(secrets.keys())}  # names only — never values
+
+
+@app.post("/admin/integrations", dependencies=[Depends(require_perm("manage_integrations"))])
+async def admin_set_integration(req: SetIntegrationRequest) -> dict:
+    org_id = _current_org_id()
+    name = req.name.strip()
+    if not name:
+        raise HTTPException(400, "integration name is required")
+    await tenant_auth.get_store().set_integration_secret(org_id, name, req.value)
+    audit.record("secret.write", org=org_id, name=name)
+    return {"status": "saved", "name": name}
+
+
+@app.patch("/admin/plan", dependencies=[Depends(require_perm("manage_billing"))])
+async def admin_set_plan(req: SetPlanRequest) -> dict:
+    org_id = _current_org_id()
+    plan = tn_models.normalize_plan(req.plan)
+    await tenant_auth.get_store().set_plan(org_id, plan)
+    audit.record("plan.changed", org=org_id, plan=plan)
+    return {"plan": plan}
 
 
 # --------------------------------------------------------------------------- #

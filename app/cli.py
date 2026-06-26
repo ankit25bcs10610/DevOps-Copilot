@@ -3,12 +3,16 @@
 Usage:
     copilot                       # interactive REPL
     copilot "why are checkouts 500ing?"   # one-shot question
+    copilot provision-org --name "Acme" --email owner@acme.com [--plan team]
 
 Approval prompts appear inline when the agent wants to perform a write action.
+The provision-org subcommand bootstraps a tenant (org + owner API key) in the
+tenant store — the out-of-band step before turning on COPILOT_MULTI_TENANT=true.
 """
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import sys
 
@@ -85,9 +89,40 @@ async def _run(question: str | None) -> None:
             console.print()
 
 
+async def _provision_org(rest: list[str]) -> None:
+    """Create an org + its owner API key in the tenant store (commercial bootstrap)."""
+    parser = argparse.ArgumentParser(prog="copilot provision-org")
+    parser.add_argument("--name", required=True, help="organization name")
+    parser.add_argument("--email", required=True, help="owner email")
+    parser.add_argument("--plan", default="team", help="free | team | enterprise")
+    ns = parser.parse_args(rest)
+
+    from app.tenancy.auth import get_store
+
+    store = get_store()
+    await store.setup()
+    org = await store.create_org(ns.name, plan=ns.plan, owner_email=ns.email)
+    plaintext, rec = await store.issue_api_key(org.id, name="owner-key", role="owner")
+    console.print(
+        Panel(
+            f"[bold]Org:[/bold] {org.name}  ([dim]{org.id}[/dim])\n"
+            f"[bold]Plan:[/bold] {org.plan}\n"
+            f"[bold]Owner:[/bold] {ns.email}\n\n"
+            f"[bold yellow]Owner API key (shown once):[/bold yellow]\n{plaintext}\n\n"
+            "[dim]Set COPILOT_MULTI_TENANT=true and send this as 'Authorization: Bearer <key>'.[/dim]",
+            title="✅ Tenant provisioned",
+            border_style="green",
+        )
+    )
+
+
 def main() -> None:
     observability.init()  # logging + LangSmith tracing (if enabled)
-    question = " ".join(sys.argv[1:]) or None
+    argv = sys.argv[1:]
+    if argv and argv[0] == "provision-org":
+        asyncio.run(_provision_org(argv[1:]))
+        return
+    question = " ".join(argv) or None
     asyncio.run(_run(question))
 
 

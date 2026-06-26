@@ -218,12 +218,37 @@ class TenantStore:
         org = await self.get_org(key.org_id)
         return (org, key) if org else None
 
-    async def revoke_api_key(self, key_id: str) -> None:
+    async def revoke_api_key(self, key_id: str, org_id: str = "") -> bool:
+        """Revoke a key. When org_id is given the UPDATE is org-scoped, so a tenant
+        can never revoke another org's key. Returns True if a key was revoked."""
+        import aiosqlite
+
+        sql = "UPDATE api_keys SET revoked_at=? WHERE id=? AND revoked_at=''"
+        params: list = [_now(), key_id]
+        if org_id:
+            sql += " AND org_id=?"
+            params.append(org_id)
+        async with aiosqlite.connect(self.db_path) as db:
+            cur = await db.execute(sql, params)
+            await db.commit()
+            return cur.rowcount > 0
+
+    async def list_api_keys(self, org_id: str) -> list[ApiKey]:
+        """List an org's keys (metadata only — never the secret)."""
         import aiosqlite
 
         async with aiosqlite.connect(self.db_path) as db:
-            await db.execute("UPDATE api_keys SET revoked_at=? WHERE id=?", (_now(), key_id))
-            await db.commit()
+            async with db.execute(
+                "SELECT id, org_id, prefix, name, role, created_at, last_used_at, revoked_at "
+                "FROM api_keys WHERE org_id=? ORDER BY created_at DESC",
+                (org_id,),
+            ) as cur:
+                rows = await cur.fetchall()
+        return [
+            ApiKey(id=r[0], org_id=r[1], prefix=r[2], name=r[3], role=r[4],
+                   created_at=r[5], last_used_at=r[6], revoked_at=r[7])
+            for r in rows
+        ]
 
     async def count_active_api_keys(self, org_id: str) -> int:
         import aiosqlite
