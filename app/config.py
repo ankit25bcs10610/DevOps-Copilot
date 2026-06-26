@@ -118,6 +118,14 @@ class Settings(BaseSettings):
     # Optional Sentry error tracking (needs `pip install sentry-sdk`). Empty = off.
     sentry_dsn: str = ""
 
+    # --- Multi-tenancy (commercial; opt-in) ---
+    # When true, the API requires a per-tenant API key (dcp_…) and resolves
+    # per-tenant config/integrations/quotas. When false (default), the app runs
+    # single-tenant exactly as the offline demo does — multi-tenancy is additive.
+    copilot_multi_tenant: bool = False
+    # Tenant store DB: SQLite path (default) or a postgres://… URL in production.
+    copilot_tenant_db: str = "./copilot_tenants.sqlite"
+
     # --- Agent behavior ---
     # Max agent (LLM) calls per turn — bounds the agent<->tools loop.
     copilot_max_iterations: int = 8
