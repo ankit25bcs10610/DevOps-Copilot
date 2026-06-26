@@ -67,6 +67,10 @@ class Settings(BaseSettings):
     # Distributed-traces connector. With a Jaeger-compatible query URL it queries
     # real traces; otherwise it serves offline OpenTelemetry-style span fixtures.
     traces_api_url: str = ""
+    # Deploys / change-events connector. With a deploy-tracker URL it queries real
+    # deploys; otherwise it serves offline fixtures (the checkout-svc rollout).
+    deploys_api_url: str = ""
+    deploys_api_token: str = ""
 
     # --- Trigger / delivery (webhooks → investigate → Slack) ---
     # PagerDuty webhook → auto-start an investigation (HMAC-verified).

@@ -112,6 +112,12 @@ MCP_CATALOG = [
             "analyze_critical_path", "get_exemplars",
         ],
     },
+    {
+        "name": "deploys",
+        "label": "Deploys",
+        "custom": True,
+        "tools": ["list_deploys", "get_deploy", "deploys_in_window"],
+    },
 ]
 
 # thread_id -> live session (insertion-ordered; used for LRU eviction).

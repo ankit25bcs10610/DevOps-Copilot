@@ -20,7 +20,8 @@ from app import policy, runtime, tenant_context
 from app.config import get_settings
 
 _SERVERS = (
-    "datadog", "repo", "github", "pagerduty", "kubernetes", "sentry", "memory", "traces",
+    "datadog", "repo", "github", "pagerduty", "kubernetes", "sentry", "memory",
+    "traces", "deploys",
 )
 
 
@@ -116,6 +117,16 @@ def _server_config() -> dict:
             "transport": "stdio",
             # TRACES_API_URL enables live (Jaeger-compatible) mode; blank = fixtures.
             "env": {"TRACES_API_URL": _isecret("TRACES_API_URL", s.traces_api_url)},
+        },
+        "deploys": {
+            "command": py,
+            "args": ["-m", "app.mcp.servers.deploys.server"],
+            "transport": "stdio",
+            # DEPLOYS_API_URL enables live mode; blank = offline deploy fixtures.
+            "env": {
+                "DEPLOYS_API_URL": _isecret("DEPLOYS_API_URL", s.deploys_api_url),
+                "DEPLOYS_API_TOKEN": _isecret("DEPLOYS_API_TOKEN", s.deploys_api_token),
+            },
         },
     }
 

@@ -11,7 +11,7 @@
 ![LangGraph](https://img.shields.io/badge/LangGraph-stateful%20agent-1C3C3C)
 ![MCP](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-7C5CFF)
 
-**LangGraph 6-node cyclic graph** · **8 custom MCP servers / 44 tools** · **structured RCA + postmortem** · **5 LLM providers** · **PagerDuty → Slack trigger loop** · **risk-tiered approval · prompt-injection guardrails · token budget** · **opt-in multi-tenant SaaS (orgs · RBAC · API keys · usage quotas)** · **ruff · mypy · ESLint · pytest · Vitest in CI** · **one Docker image (SPA + API)**
+**LangGraph 6-node cyclic graph** · **9 custom MCP servers / 47 tools** · **structured RCA + postmortem** · **5 LLM providers** · **PagerDuty → Slack trigger loop** · **risk-tiered approval · prompt-injection guardrails · token budget** · **opt-in multi-tenant SaaS (orgs · RBAC · API keys · usage quotas)** · **ruff · mypy · ESLint · pytest · Vitest in CI** · **one Docker image (SPA + API)**
 
 </div>
 
@@ -53,7 +53,7 @@ It is a full-stack reference implementation of a modern agentic system, with the
 |---|---|
 | **Structured RCA + postmortem** | Every finished investigation is compiled into a typed RCA object — **ranked hypotheses** each marked *validated / invalidated / inconclusive* with **cited evidence**, plus severity, affected services, and recommended actions — with a **calibrated confidence** that abstains ("insufficient evidence") on thin investigations instead of bluffing. Rendered as an expandable card and a one-click **blameless postmortem** download. |
 | **Risk-tiered human approval** | A policy engine classifies every tool call **allow / notify / approve** by consequence, with a risk tier and a terraform-plan-style **impact preview** on the approval card. It's **argument-aware** (scaling a deployment to zero escalates to high-risk), and the gate is a resumable LangGraph `interrupt()` the routing can't bypass. See [Human-in-the-loop](#human-in-the-loop-by-design). |
-| **Eight custom MCP servers** | `datadog` (logs/metrics + anomaly detection), `pagerduty` (alerting + ack/note/resolve), `kubernetes` (pods/events/rollouts + scale/rollback), `sentry` (issues/stack-traces), `traces` (span search + **blast-radius** reasoning), `github` (commits, CI logs, change-correlation, PRs), a path-sandboxed `repo` server, and an `incident-memory` server (BM25 search over prior RCAs/runbooks) — **44 tools** including deterministic **analysis** tools (critical-path/self-time attribution, SLO burn-rate, onset ordering, deploy-bisect, anomaly→trace exemplars, log-template clustering), each with **live-API + offline-fixture** modes, all hand-built on FastMCP/stdio and discovered at runtime via `langchain-mcp-adapters`. |
+| **Nine custom MCP servers** | `datadog` (logs/metrics + anomaly detection), `pagerduty` (alerting + ack/note/resolve), `kubernetes` (pods/events/rollouts + scale/rollback), `sentry` (issues/stack-traces), `traces` (span search + **blast-radius** reasoning), `deploys` (change-events for "what shipped"), `github` (commits, CI logs, change-correlation, PRs), a path-sandboxed `repo` server, and an `incident-memory` server (BM25 search over prior RCAs/runbooks) — **47 tools** including deterministic **analysis** tools (critical-path/self-time attribution, SLO burn-rate, onset ordering, deploy-bisect, anomaly→trace exemplars, log-template clustering), each with **live-API + offline-fixture** modes, all hand-built on FastMCP/stdio and discovered at runtime via `langchain-mcp-adapters`. |
 | **Trust & safety built in** | Untrusted tool output is **provenance-boxed and scanned for prompt injection** before it reaches the model; a per-investigation **token budget** hard-stops runaway cost; an append-only **audit trail** (queryable via `/audit`) records approvals, model changes, injection hits, and feedback. |
 | **Triggered + delivered** | A signed **PagerDuty webhook** auto-starts an investigation; findings post to **Slack** with **Approve / Reject** buttons that resume the agent through the same approval gate — the agent shows up when you're paged. |
 | **Learning loop** | Thumbs up/down on any answer is captured as a labeled case (`/feedback`); thumbs-down seeds a regression eval. The eval harness scores tool use **and** the structured verdict. |
@@ -102,8 +102,9 @@ A React console with a live activity timeline, the human-in-the-loop approval ca
    │  outs + scale/rollbackW)│  stack-traces)     │  incident-memory (BM25)   │
    │ traces (spans +       │                      │                           │
    │  blast-radius)        │                      │                           │
+   │ deploys (what shipped)│                      │                           │
    └──────────────────────┴──────────────────────┴───────────────────────────┘
-                          8 MCP servers · 44 tools
+                          9 MCP servers · 47 tools
 ```
 
 > The agent never imports a server directly — it only sees the tools each MCP server advertises. Untrusted tool output is provenance-boxed and injection-scanned by a **guarded tool node** before re-entering the model's context. Full design notes in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
@@ -269,8 +270,8 @@ The CI workflow runs the replay gate automatically once a cassette is committed 
 app/
   api/        FastAPI surface — chat/approve (+SSE), config, model, sources, github, feedback, audit, webhooks, probes
   graph/      LangGraph: state, nodes (plan/agent/approval/tools/reflect/report), edges, builder, prompts
-  mcp/        client wiring + eight custom MCP servers (FastMCP/stdio): datadog, pagerduty,
-              kubernetes, sentry, traces (blast-radius), github, repo, memory (incident search)
+  mcp/        client wiring + nine custom MCP servers (FastMCP/stdio): datadog, pagerduty,
+              kubernetes, sentry, traces (blast-radius), deploys, github, repo, memory (incident search)
   policy.py   risk-tiered action policy (allow / notify / approve + impact preview)
   guardrails.py     prompt-injection detection + provenance-boxing of tool output
   audit.py / feedback.py   queryable audit trail + thumbs up/down capture

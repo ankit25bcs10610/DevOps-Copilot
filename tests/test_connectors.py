@@ -5,6 +5,7 @@ cover the offline fixtures the demo + agent rely on."""
 import pytest
 
 from app.mcp.servers.datadog import server as dd
+from app.mcp.servers.deploys import server as deploys
 from app.mcp.servers.github import server as gh
 from app.mcp.servers.kubernetes import server as k8s
 from app.mcp.servers.pagerduty import server as pd
@@ -231,6 +232,24 @@ def test_onset_timeline_orders_changepoints():
         pytest.skip("DD keys set")
     events = dd.onset_timeline()
     assert any(e.get("service") == "checkout-svc" for e in events)
+
+
+# --- Deploys connector (offline fixtures tie to the discount rollout) ----- #
+def test_deploys_offline_lists_discount_rollout():
+    if not deploys.OFFLINE:
+        pytest.skip("DEPLOYS_API_URL is set")
+    rows = deploys.list_deploys(service="checkout-svc")
+    assert rows and rows[0]["version"] == "1.8.0"  # newest first
+    assert rows[0]["sha"] == "abc1234"
+
+
+def test_deploys_in_window_correlates_with_onset():
+    if not deploys.OFFLINE:
+        pytest.skip("DEPLOYS_API_URL is set")
+    # the 1.8.0 deploy at 09:58:30 falls just before the 10:01 error onset
+    hits = deploys.deploys_in_window("2026-06-23T09:55:00Z", "2026-06-23T10:05:00Z", "checkout-svc")
+    assert any(d["version"] == "1.8.0" for d in hits)
+    assert deploys.get_deploy("dep-9001")["sha"] == "abc1234"
 
 
 def test_first_bad_deploy_picks_last_change_before_onset():
