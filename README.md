@@ -149,7 +149,9 @@ Every item below is in the code today (file references included so it's verifiab
 
 **Observability** — structured JSON logs in production (text in dev), each record carrying a request-id propagated end-to-end via a contextvar; an append-only, **queryable audit trail** (`GET /audit`) of approvals, model changes, injection detections, and feedback (`app/audit.py`); a **feedback loop** (`/feedback`) capturing labeled cases; optional LangSmith tracing and **Sentry** error tracking (`SENTRY_DSN`). `app/observability.py`, `app/audit.py`, `app/feedback.py`
 
-**Testing &amp; CI** — a **pytest suite (100+ tests)** covering the approval policy + routing, the RCA report parsing/rendering, the token-budget kill-switch, the prompt-injection guardrails, the fail-closed config validator, the repo path-traversal/symlink sandbox, per-provider key isolation, the auth / rate-limit / body-cap middleware, the webhook signature gates, and every connector's offline path — all without an LLM key. CI (`.github/workflows/ci.yml`) runs **ruff + mypy + pytest** on the backend and **ESLint + tsc typecheck + Vitest + Vite build** on the frontend, every push and PR.
+**Reproducibility** — a VCR-style **record/replay cassette layer** (`app/replay.py`) makes a non-deterministic agent run bit-for-bit reproducible: it records each LLM response keyed by a normalized message hash (ids/timestamps excluded), so a whole investigation replays offline with no key. This powers the **golden-trajectory regression gate** (`evals/run_golden.py`) that CI runs once a cassette is recorded. Production is untouched (replay is off by default).
+
+**Testing &amp; CI** — a **pytest suite (120+ tests)** covering the approval policy + routing, the RCA report parsing/rendering, the token-budget kill-switch, the prompt-injection guardrails, the record/replay cassette layer, the fail-closed config validator, the repo path-traversal/symlink sandbox, per-provider key isolation, the auth / rate-limit / body-cap middleware, the webhook signature gates, and every connector's offline path — all without an LLM key. CI (`.github/workflows/ci.yml`) runs **ruff + mypy + pytest + the golden replay gate** on the backend and **ESLint + tsc typecheck + Vitest + Vite build** on the frontend, every push and PR.
 
 **Accessibility** — `prefers-reduced-motion` support (pauses the 3D render loop, static fallback), ARIA roles/labels and a screen-reader live region for the streaming trace, a skip-to-content link, WCAG-AA-checked contrast, and a cancellable Stop control with conversation persistence across reloads. `frontend/src/`
 
@@ -249,6 +251,15 @@ uv run python -m evals.run_evals
 
 Runs cases from `evals/testcases.yaml` against a live agent session and scores **keyword recall**, **tool-usage correctness**, the **structured RCA verdict** (root cause named + valid severity), and **latency** (write actions auto-approved). Thumbs-down feedback captured in production (`/feedback`) is the natural source of new regression cases.
 
+**Deterministic golden gate (offline, no key).** Because the MCP servers run deterministic offline fixtures, only the LLM is non-deterministic — so a VCR-style **cassette layer** (`app/replay.py`) records each LLM response keyed by a normalized message hash. Record once with a key, then replay forever in CI with none:
+
+```bash
+COPILOT_REPLAY_MODE=record uv run python -m evals.run_golden --record   # once, with a key
+uv run python -m evals.run_golden                                       # replay, offline; fails CI on a regression
+```
+
+The CI workflow runs the replay gate automatically once a cassette is committed (`evals/cassettes/`).
+
 ## Project structure
 
 ```
@@ -260,6 +271,7 @@ app/
   policy.py   risk-tiered action policy (allow / notify / approve + impact preview)
   guardrails.py     prompt-injection detection + provenance-boxing of tool output
   audit.py / feedback.py   queryable audit trail + thumbs up/down capture
+  replay.py   VCR-style record/replay cassette layer for deterministic offline evals
   secrets_vault.py  Fernet secret-vault primitive (multi-tenant foundation)
   llm.py      provider factory (Anthropic / OpenAI / Gemini / Groq / DeepSeek)
   runtime.py  in-memory runtime overrides (model, sources, GitHub) — not persisted
@@ -269,8 +281,8 @@ app/
 frontend/
   src/components/   Hero3D (R3F, lazy-loaded), Console, Sidebar, RcaReportCard, ApprovalCard, …
   src/hooks/        useCopilot (streaming + cancel + persistence + feedback), useConfig, useTheme
-tests/        100+ pytest suite (API, config, edges, policy, guardrails, report, connectors, …)
-evals/        eval harness (scores verdict + tools) + test cases
+tests/        120+ pytest suite (API, config, edges, policy, guardrails, report, replay, connectors, …)
+evals/        eval harness (scores verdict + tools) + golden replay gate + test cases + cassettes
 sample_repo/  fixture repo with a planted bug
 ```
 

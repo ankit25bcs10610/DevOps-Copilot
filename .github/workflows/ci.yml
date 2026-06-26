@@ -21,6 +21,15 @@ jobs:
         run: uv run mypy app
       - name: Pytest
         run: uv run pytest -q
+      - name: Golden-trajectory replay gate
+        # Replays recorded incident cassettes offline (no API key). No-op until a
+        # cassette is recorded (evals/cassettes/golden.json); fails on a regression.
+        run: |
+          if [ -f evals/cassettes/golden.json ]; then
+            uv run python -m evals.run_golden
+          else
+            echo "no golden cassette yet — skipping (record with: uv run python -m evals.run_golden --record)"
+          fi
 
   frontend:
     name: Frontend (build)

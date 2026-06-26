@@ -20,7 +20,7 @@ import importlib
 
 from langchain_core.language_models.chat_models import BaseChatModel
 
-from app import runtime
+from app import replay, runtime
 
 # Per-provider default models: (main, fast).
 _DEFAULTS = {
@@ -67,8 +67,20 @@ def get_llm(fast: bool = False, model: str | None = None) -> BaseChatModel:
     provider = runtime.provider()
     if model is None:
         model = _resolve_model(fast)
-    key = runtime.provider_key()
 
+    # Replay mode serves recorded responses with no real client (and no key), so
+    # skip building the provider SDK entirely.
+    if replay.mode() == "replay":
+        return replay.replay_model(model)
+
+    key = runtime.provider_key()
+    # Build the real client, then wrap for record (no-op in off mode, so the
+    # production path is identical). `model` is the resolved id used in the cassette key.
+    built = _build(provider, model, key, fast)
+    return replay.wrap(built, model)
+
+
+def _build(provider: str, model: str, key: str, fast: bool) -> BaseChatModel:
     if provider == "anthropic":
         from langchain_anthropic import ChatAnthropic
 
