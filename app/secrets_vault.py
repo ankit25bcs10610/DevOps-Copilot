@@ -39,10 +39,41 @@ def _fernet():
 
 
 def encrypt(plaintext: str) -> str:
-    """Encrypt a secret for storage. Returns a URL-safe token string."""
+    """Encrypt a secret with the KEK (COPILOT_SECRET_KEY). Returns a token string."""
     return _fernet().encrypt(plaintext.encode()).decode()
 
 
 def decrypt(token: str) -> str:
     """Decrypt a token produced by encrypt()."""
     return _fernet().decrypt(token.encode()).decode()
+
+
+# --------------------------------------------------------------------------- #
+# Envelope encryption: a per-tenant Data Encryption Key (DEK) wrapped by the
+# COPILOT_SECRET_KEY Key Encryption Key (KEK). Each tenant's secrets are encrypted
+# with their own DEK, so compromising one DEK never exposes another tenant, and
+# deleting a DEK ("crypto-shred") makes that tenant's secrets unrecoverable —
+# the basis for cryptographic isolation + GDPR-style erasure.
+# --------------------------------------------------------------------------- #
+def new_wrapped_dek() -> str:
+    """Generate a fresh DEK and return it wrapped by the KEK (safe to store)."""
+    from cryptography.fernet import Fernet
+
+    dek = Fernet.generate_key().decode()
+    return encrypt(dek)  # wrap with the KEK
+
+
+def _dek_fernet(wrapped_dek: str):
+    from cryptography.fernet import Fernet
+
+    return Fernet(decrypt(wrapped_dek).encode())  # unwrap with the KEK
+
+
+def encrypt_with(wrapped_dek: str, plaintext: str) -> str:
+    """Encrypt a secret with a tenant's (wrapped) DEK."""
+    return _dek_fernet(wrapped_dek).encrypt(plaintext.encode()).decode()
+
+
+def decrypt_with(wrapped_dek: str, token: str) -> str:
+    """Decrypt a token produced by encrypt_with() for the same wrapped DEK."""
+    return _dek_fernet(wrapped_dek).decrypt(token.encode()).decode()

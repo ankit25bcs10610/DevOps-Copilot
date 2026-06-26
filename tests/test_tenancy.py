@@ -152,6 +152,37 @@ def test_expired_api_key_is_rejected(tmp_path):
     _run(scenario())
 
 
+def test_envelope_encryption_isolates_tenants(tmp_path):
+    pytest.importorskip("cryptography")
+    s = _store(tmp_path)
+
+    async def scenario():
+        a = await s.create_org("A")
+        b = await s.create_org("B")
+        await s.set_integration_secret(a.id, "DD_API_KEY", "A-secret")
+        await s.set_integration_secret(b.id, "DD_API_KEY", "B-secret")
+        assert await s.get_integration_secret(a.id, "DD_API_KEY") == "A-secret"
+        assert await s.get_integration_secret(b.id, "DD_API_KEY") == "B-secret"
+        # each org has its own (different) wrapped DEK
+        dek_a = await s._wrapped_dek(a.id)
+        dek_b = await s._wrapped_dek(b.id)
+        assert dek_a and dek_b and dek_a != dek_b
+
+    _run(scenario())
+
+
+def test_envelope_cross_dek_decrypt_fails():
+    pytest.importorskip("cryptography")
+    from app import secrets_vault as sv
+
+    dek1 = sv.new_wrapped_dek()
+    dek2 = sv.new_wrapped_dek()
+    token = sv.encrypt_with(dek1, "secret")
+    assert sv.decrypt_with(dek1, token) == "secret"
+    with pytest.raises(Exception):  # noqa: B017 — wrong DEK => InvalidToken
+        sv.decrypt_with(dek2, token)
+
+
 def test_postgres_url_rejected_clearly():
     with pytest.raises(RuntimeError):
         TenantStore("postgresql://example/db")

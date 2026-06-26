@@ -54,7 +54,8 @@ def _hash_secret(secret: str) -> str:
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS orgs (
     id TEXT PRIMARY KEY, name TEXT NOT NULL, plan TEXT NOT NULL,
-    created_at TEXT NOT NULL, stripe_customer_id TEXT DEFAULT ''
+    created_at TEXT NOT NULL, stripe_customer_id TEXT DEFAULT '',
+    wrapped_dek TEXT DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, created_at TEXT NOT NULL
@@ -108,10 +109,17 @@ class TenantStore:
         org = Org(id=_id(), name=name, plan=normalize_plan(plan), created_at=_now())
         import aiosqlite
 
+        # Per-tenant DEK (wrapped by the KEK) for envelope-encrypting this org's
+        # secrets — best-effort: if cryptography/KEK is unavailable, fall back to
+        # the single-key path so org creation never hard-fails in the offline demo.
+        try:
+            wrapped_dek = secrets_vault.new_wrapped_dek()
+        except Exception:  # noqa: BLE001
+            wrapped_dek = ""
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
-                "INSERT INTO orgs (id, name, plan, created_at) VALUES (?,?,?,?)",
-                (org.id, org.name, org.plan, org.created_at),
+                "INSERT INTO orgs (id, name, plan, created_at, wrapped_dek) VALUES (?,?,?,?,?)",
+                (org.id, org.name, org.plan, org.created_at, wrapped_dek),
             )
             await db.commit()
         if owner_email:
@@ -278,9 +286,24 @@ class TenantStore:
                 row = await cur.fetchone()
         return int(row[0]) if row else 0
 
-    # --- per-tenant integration secrets (encrypted at rest) --------------- #
+    # --- per-tenant integration secrets (envelope-encrypted at rest) ------ #
+    async def _wrapped_dek(self, org_id: str) -> str:
+        import aiosqlite
+
+        async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute("SELECT wrapped_dek FROM orgs WHERE id=?", (org_id,)) as cur:
+                row = await cur.fetchone()
+        return row[0] if row and row[0] else ""
+
+    def _enc(self, dek: str, value: str) -> str:
+        return secrets_vault.encrypt_with(dek, value) if dek else secrets_vault.encrypt(value)
+
+    def _dec(self, dek: str, token: str) -> str:
+        return secrets_vault.decrypt_with(dek, token) if dek else secrets_vault.decrypt(token)
+
     async def set_integration_secret(self, org_id: str, name: str, value: str) -> None:
-        token = secrets_vault.encrypt(value)
+        dek = await self._wrapped_dek(org_id)
+        token = self._enc(dek, value)
         import aiosqlite
 
         async with aiosqlite.connect(self.db_path) as db:
@@ -292,6 +315,7 @@ class TenantStore:
             await db.commit()
 
     async def get_integration_secret(self, org_id: str, name: str) -> str | None:
+        dek = await self._wrapped_dek(org_id)
         import aiosqlite
 
         async with aiosqlite.connect(self.db_path) as db:
@@ -302,10 +326,11 @@ class TenantStore:
                 row = await cur.fetchone()
         if not row:
             return None
-        return secrets_vault.decrypt(row[0])
+        return self._dec(dek, row[0])
 
     async def get_integration_secrets(self, org_id: str) -> dict[str, str]:
         """All of an org's integration secrets, decrypted (for building a session)."""
+        dek = await self._wrapped_dek(org_id)
         import aiosqlite
 
         async with aiosqlite.connect(self.db_path) as db:
@@ -313,7 +338,7 @@ class TenantStore:
                 "SELECT name, value_encrypted FROM integration_secrets WHERE org_id=?", (org_id,)
             ) as cur:
                 rows = await cur.fetchall()
-        return {name: secrets_vault.decrypt(tok) for name, tok in rows}
+        return {name: self._dec(dek, tok) for name, tok in rows}
 
     async def count_integrations(self, org_id: str) -> int:
         import aiosqlite
