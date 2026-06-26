@@ -11,7 +11,7 @@
 ![LangGraph](https://img.shields.io/badge/LangGraph-stateful%20agent-1C3C3C)
 ![MCP](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-7C5CFF)
 
-**LangGraph 6-node cyclic graph** · **8 custom MCP servers / 44 tools** · **structured RCA + postmortem** · **5 LLM providers** · **PagerDuty → Slack trigger loop** · **risk-tiered approval · prompt-injection guardrails · token budget** · **ruff · mypy · ESLint · pytest · Vitest in CI** · **one Docker image (SPA + API)**
+**LangGraph 6-node cyclic graph** · **8 custom MCP servers / 44 tools** · **structured RCA + postmortem** · **5 LLM providers** · **PagerDuty → Slack trigger loop** · **risk-tiered approval · prompt-injection guardrails · token budget** · **opt-in multi-tenant SaaS (orgs · RBAC · API keys · usage quotas)** · **ruff · mypy · ESLint · pytest · Vitest in CI** · **one Docker image (SPA + API)**
 
 </div>
 
@@ -59,6 +59,7 @@ It is a full-stack reference implementation of a modern agentic system, with the
 | **Learning loop** | Thumbs up/down on any answer is captured as a labeled case (`/feedback`); thumbs-down seeds a regression eval. The eval harness scores tool use **and** the structured verdict. |
 | **5 LLM providers, switchable live** | Anthropic (Claude Opus 4.8), OpenAI, Gemini, Groq/Llama, DeepSeek — change provider, model, or key **from the UI with no restart**, validated server-side. Adaptive thinking runs only on the main Opus model. |
 | **Production-hardened** | Bearer auth, per-IP rate limiting, request caps, `/healthz` + `/readyz`, graceful shutdown, structured JSON logs with request-ids, Sentry hook, and a fail-closed production config. See [Production hardening](#production-hardening). |
+| **Multi-tenant SaaS layer (opt-in)** | `COPILOT_MULTI_TENANT=true` adds per-tenant **orgs + RBAC**, tenant-scoped **API keys**, request-scoped per-tenant **config/credentials** (contextvar seam, proven leak-free), **investigation isolation**, **usage metering + plan quotas**, **admin endpoints + CLI provisioning**, **PII redaction**, and a **tamper-evident audit chain** — all additive, so the offline demo is unchanged when off. See [`docs/COMMERCIALIZATION.md`](docs/COMMERCIALIZATION.md). |
 | **One Docker image** | A multi-stage build compiles the React + WebGL console and serves it from FastAPI — `docker compose up` gives you the whole product on `:8000`. |
 
 ## Interface
@@ -224,7 +225,9 @@ Set in `.env` (most are also changeable live from the console UI — those overr
 | `POST /sources/repo` · `/sources/logs` · `POST /reset` | Point tools at your data / revert overrides |
 | `GET /metrics` | Real metric series + error summary |
 | `POST /feedback` | Thumbs up/down on an investigation (feeds the eval loop) |
-| `GET /audit` | Queryable audit trail (approvals, model changes, injection hits, feedback) |
+| `GET /audit` · `GET /audit/verify` | Queryable + hash-chain-verified audit trail |
+| `GET /usage` | Per-tenant usage + plan quota (multi-tenant) |
+| `/admin/*` | Tenant self-management: org, members, API keys, integrations, plan (RBAC-gated) |
 | `POST /webhooks/pagerduty` | PagerDuty trigger → auto-investigate (HMAC-verified) |
 | `POST /webhooks/slack/interactions` | Slack Approve/Reject callback (signature-verified) |
 | `GET /healthz` · `GET /readyz` | Liveness / readiness probes (auth-exempt) |
@@ -241,7 +244,7 @@ It runs as a non-root user, persists the SQLite checkpoint DB to a volume, and s
 
 ## Scope &amp; scaling
 
-The app is production-*hardened* and ships the **multi-tenant foundations**: a **Postgres checkpointer** (built-in — set `COPILOT_CHECKPOINT_DB` to a `postgres://` URL + the `postgres` extra), an encrypted **secret-vault** primitive (`app/secrets_vault.py`), and the audit trail. It still runs **single-instance by default** (SQLite + in-process MCP subprocesses), which is the right shape for the single-artifact demo. The remaining steps to full multi-tenant SaaS — per-tenant orgs/RBAC/SSO and request-scoped config (replacing the in-process runtime globals), a shared rate limiter, and remote HTTP MCP — are deliberately **not** done, and are mapped onto the code in [`docs/PRODUCT-ARCHITECTURE.md`](docs/PRODUCT-ARCHITECTURE.md) and [`DEPLOY.md` §6](DEPLOY.md). Framed as next steps, not claimed as done.
+The app runs **single-instance / single-tenant by default** (SQLite + in-process MCP subprocesses) — the right shape for the offline demo — but ships a full **opt-in multi-tenant SaaS layer** (`COPILOT_MULTI_TENANT=true`), built additively so the demo is unaffected when off: per-tenant **orgs + RBAC**, tenant-scoped **API keys**, request-scoped **per-tenant config/credentials** (replacing the runtime globals via a contextvar seam), **investigation isolation**, **usage metering + plan quotas**, **admin endpoints + CLI provisioning**, **PII redaction**, and a **tamper-evident audit chain**. Full design + quickstart in [`docs/COMMERCIALIZATION.md`](docs/COMMERCIALIZATION.md). The remaining steps need live infra and are deliberately deferred (mapped, not done): per-tenant **envelope encryption**, **Postgres + Row-Level Security** (the SQLite store is app-level isolated, not RLS-hard), and **Stripe billing + SSO/SAML/SCIM**. A built-in **Postgres checkpointer** (`COPILOT_CHECKPOINT_DB=postgres://…`) already covers multi-instance graph state.
 
 ## Evaluation
 
