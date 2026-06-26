@@ -87,6 +87,27 @@ def setup_langsmith() -> None:
     log.info("LangSmith tracing enabled (project=%s)", s.langchain_project)
 
 
+def setup_datadog_apm() -> None:
+    """Enable Datadog APM self-instrumentation when DD_TRACE_ENABLED is set.
+
+    This traces the copilot ITSELF (FastAPI requests, httpx calls, etc.) to a
+    Datadog agent — distinct from the `datadog` MCP connector, which *reads* your
+    services' logs/metrics. ddtrace honors DD_SERVICE / DD_ENV / DD_AGENT_HOST from
+    the environment. No-op (with a warning) if disabled or ddtrace isn't installed."""
+    if not get_settings().dd_trace_enabled:
+        return
+    os.environ.setdefault("DD_SERVICE", "devops-copilot")
+    os.environ.setdefault("DD_ENV", get_settings().copilot_env)
+    try:
+        import ddtrace.auto  # noqa: F401  — auto-instruments imported libraries on import
+    except ImportError:
+        log.warning("DD_TRACE_ENABLED is set but ddtrace is not installed "
+                    "(uv pip install ddtrace, or the 'apm' extra)")
+        return
+    log.info("Datadog APM enabled (service=%s env=%s)",
+             os.environ.get("DD_SERVICE"), get_settings().copilot_env)
+
+
 def setup_sentry() -> None:
     """Enable Sentry error tracking when SENTRY_DSN is set. Sentry's default
     logging integration captures our `log.exception(...)` calls as events, so no
@@ -112,3 +133,4 @@ def init() -> None:
     configure_logging()
     setup_langsmith()
     setup_sentry()
+    setup_datadog_apm()

@@ -11,6 +11,11 @@ def test_setup_sentry_is_noop_without_dsn():
     observability.setup_sentry()
 
 
+def test_setup_datadog_apm_is_noop_when_disabled():
+    # DD_TRACE_ENABLED defaults to false -> returns cleanly without instrumenting.
+    observability.setup_datadog_apm()
+
+
 def test_json_formatter_includes_request_id_and_level():
     record = logging.LogRecord("devcopilot", logging.INFO, __file__, 1, "hello", None, None)
     record.request_id = "rid-123"

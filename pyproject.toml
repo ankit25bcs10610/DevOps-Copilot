@@ -42,6 +42,7 @@ providers = [
 # Multi-tenant foundations (opt-in; base install stays single-instance/SQLite):
 postgres = ["langgraph-checkpoint-postgres>=2.0.0"]  # COPILOT_CHECKPOINT_DB=postgres://...
 secrets = ["cryptography>=42.0"]                     # per-tenant secret vault
+apm = ["ddtrace>=4.0"]                               # Datadog APM (DD_TRACE_ENABLED=true)
 dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",

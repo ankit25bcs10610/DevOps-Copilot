@@ -35,7 +35,9 @@ surfaced per-turn in the UI. — `app/graph/nodes.py`, `app/graph/state.py`
   injection detections, redactions, and feedback — and **tamper-evident** (hash-chained,
   `GET /audit/verify`). — `app/audit.py`
 - A **feedback loop** (`/feedback`) capturing labeled cases. — `app/feedback.py`
-- Optional **LangSmith** tracing and **Sentry** error tracking (`SENTRY_DSN`). — `app/observability.py`
+- Optional **LangSmith** tracing, **Sentry** error tracking (`SENTRY_DSN`), and **Datadog
+  APM** self-instrumentation of the copilot (`DD_TRACE_ENABLED` + the `apm` extra; honors
+  `DD_SERVICE`/`DD_ENV`/`DD_AGENT_HOST`). — `app/observability.py`
 
 ## Reproducibility
 A VCR-style **record/replay cassette layer** (`app/replay.py`) makes a non-deterministic

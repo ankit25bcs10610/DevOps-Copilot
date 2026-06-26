@@ -121,6 +121,9 @@ class Settings(BaseSettings):
     langchain_project: str = "devops-copilot"
     # Optional Sentry error tracking (needs `pip install sentry-sdk`). Empty = off.
     sentry_dsn: str = ""
+    # Datadog APM self-instrumentation of the copilot (needs `ddtrace` + a DD agent).
+    # Honors DD_SERVICE / DD_ENV / DD_AGENT_HOST. Off by default.
+    dd_trace_enabled: bool = False
 
     # --- Multi-tenancy (commercial; opt-in) ---
     # When true, the API requires a per-tenant API key (dcp_…) and resolves
