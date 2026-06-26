@@ -623,14 +623,28 @@ async def github_status() -> dict:
     return _github_status()
 
 
+def _normalize_repo(raw: str) -> str:
+    """Accept a full GitHub URL or `owner/repo` and return `owner/repo`.
+    Strips https/ssh prefixes, a trailing .git, and any extra path segments —
+    so pasting 'https://github.com/acme/app' works, not just 'acme/app'."""
+    r = (raw or "").strip()
+    r = r.removesuffix(".git")
+    for prefix in ("https://github.com/", "http://github.com/", "github.com/", "git@github.com:"):
+        if r.startswith(prefix):
+            r = r[len(prefix):]
+            break
+    parts = [p for p in r.strip("/").split("/") if p]
+    return "/".join(parts[:2])  # owner/repo
+
+
 @app.post("/github/connect", dependencies=[Depends(require_perm("manage_integrations"))])
 async def github_connect(req: GithubConnectRequest) -> dict:
     """Validate a GitHub token + repo against the real API, then switch the
     GitHub MCP server into live mode (in-memory only — not persisted)."""
     token = req.token.strip()
-    repo = req.repo.strip()
-    if not token or "/" not in repo:
-        raise HTTPException(400, "Provide a token and a repo as 'owner/repo'.")
+    repo = _normalize_repo(req.repo)  # accept a URL or owner/repo
+    if not token or repo.count("/") != 1:
+        raise HTTPException(400, "Provide a token and a repo as 'owner/repo' (or a GitHub URL).")
 
     # Verify the credentials actually work before storing them.
     try:

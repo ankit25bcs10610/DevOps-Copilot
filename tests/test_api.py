@@ -81,6 +81,15 @@ def test_github_connect_bad_body(client):
     assert client.post("/github/connect", json={"token": "", "repo": "noslash"}).status_code == 400
 
 
+def test_normalize_repo_accepts_urls_and_owner_repo():
+    assert api._normalize_repo("https://github.com/acme/app") == "acme/app"
+    assert api._normalize_repo("https://github.com/acme/app.git") == "acme/app"
+    assert api._normalize_repo("https://github.com/acme/app/tree/main") == "acme/app"
+    assert api._normalize_repo("git@github.com:acme/app.git") == "acme/app"
+    assert api._normalize_repo("acme/app") == "acme/app"
+    assert api._normalize_repo("  acme/app/  ") == "acme/app"
+
+
 def test_empty_message_rejected(client):
     assert client.post("/chat", json={"thread_id": "t", "message": "   "}).status_code == 400
 
