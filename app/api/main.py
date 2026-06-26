@@ -32,12 +32,14 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app import audit, feedback, metrics_source, observability, runtime
+from app import audit, feedback, metrics_source, observability, runtime, tenant_context
 from app.config import ROOT, get_settings
 from app.integrations import pagerduty as pd_webhook
 from app.integrations import slack
 from app.llm import active_api_key, resolved_models
 from app.session import CopilotSession, TurnResult
+from app.tenancy import auth as tenant_auth
+from app.tenancy import models as tn_models
 
 # Activate logging + LangSmith tracing before any model/graph is built.
 observability.init()
@@ -308,6 +310,13 @@ async def _drain_and_close() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Multi-tenant: ensure the tenant store schema exists before serving.
+    if get_settings().copilot_multi_tenant:
+        await tenant_auth.get_store().setup()
+        log.info("multi-tenant mode: tenant store ready (%s)", get_settings().copilot_tenant_db)
+        if get_settings().copilot_tenant_db.startswith(("postgres://", "postgresql://")) is False:
+            log.warning("multi-tenant on SQLite is app-level isolated, not RLS-hard-isolated; "
+                        "use Postgres + RLS for production tenant isolation")
     yield
     # Graceful shutdown: the config gate's exclusive writer waits for in-flight
     # turns to drain before tearing sessions down, so we don't kill MCP
@@ -334,13 +343,51 @@ async def require_auth(request: Request) -> None:
     # shared bearer token — PagerDuty/Slack don't send it.
     if request.url.path.startswith("/webhooks/"):
         return
-    expected = get_settings().copilot_api_token
+
+    s = get_settings()
+    # Multi-tenant: resolve the per-tenant API key (dcp_…) into the request's
+    # TenantConfig + actor on the contextvar. Task-isolated, so it's scoped to
+    # this request and read by runtime.py / the agent for the rest of the call.
+    if s.copilot_multi_tenant:
+        provided = request.headers.get("authorization", "")
+        key = provided[7:].strip() if provided.startswith("Bearer ") else provided.strip()
+        resolved = await tenant_auth.resolve(key)
+        if resolved is None:
+            raise HTTPException(401, "Invalid or revoked API key.")
+        cfg, actor = resolved
+        tenant_context.set_tenant(cfg)
+        tenant_context.set_actor(actor)
+        return
+
+    expected = s.copilot_api_token
     if not expected:
         return  # auth disabled (dev)
     provided = request.headers.get("authorization", "")
     # Constant-time compare so the token can't be recovered via response timing.
     if not hmac.compare_digest(provided, f"Bearer {expected}"):
         raise HTTPException(401, "Missing or invalid API token.")
+
+
+def require_perm(action: str):
+    """Route dependency factory: enforce the RBAC matrix on the resolved tenant.
+    No-op in single-tenant mode (no roles), so the offline demo is unaffected."""
+
+    async def _check() -> None:
+        if not get_settings().copilot_multi_tenant:
+            return
+        cfg = tenant_context.get_tenant()
+        role = cfg.role if cfg else "viewer"
+        if not tn_models.can(role, action):
+            raise HTTPException(403, f"Role '{role}' is not permitted to {action.replace('_', ' ')}.")
+
+    return _check
+
+
+def _scoped(thread_id: str) -> str:
+    """Namespace a thread by tenant so one org can never resume/read another's
+    investigation. No-op (returns thread_id) in single-tenant mode."""
+    cfg = tenant_context.get_tenant()
+    return f"{cfg.org_id}:{thread_id}" if cfg else thread_id
 
 
 app = FastAPI(
@@ -498,7 +545,9 @@ async def readyz():
     an LLM API key to be configured (env or runtime) before reporting ready."""
     s = get_settings()
     reasons: list[str] = []
-    if s.is_production and not active_api_key():
+    # In multi-tenant mode each tenant supplies its own LLM key, so a global key
+    # isn't required for readiness.
+    if s.is_production and not s.copilot_multi_tenant and not active_api_key():
         reasons.append("no LLM API key configured for the active provider")
     ready = not reasons
     return JSONResponse(
@@ -531,7 +580,7 @@ async def github_status() -> dict:
     return _github_status()
 
 
-@app.post("/github/connect")
+@app.post("/github/connect", dependencies=[Depends(require_perm("manage_integrations"))])
 async def github_connect(req: GithubConnectRequest) -> dict:
     """Validate a GitHub token + repo against the real API, then switch the
     GitHub MCP server into live mode (in-memory only — not persisted)."""
@@ -569,14 +618,14 @@ async def github_connect(req: GithubConnectRequest) -> dict:
     return status
 
 
-@app.post("/github/disconnect")
+@app.post("/github/disconnect", dependencies=[Depends(require_perm("manage_integrations"))])
 async def github_disconnect() -> dict:
     runtime.clear_github()
     await _evict_all()
     return _github_status()
 
 
-@app.post("/model/configure")
+@app.post("/model/configure", dependencies=[Depends(require_perm("manage_integrations"))])
 async def model_configure(req: ModelConfigRequest) -> dict:
     """Switch the LLM provider/model (and key) at runtime. Pasting an Anthropic
     key here unlocks Claude Opus 4.8 without touching .env."""
@@ -617,14 +666,14 @@ def _set_source(path: str, kind: str, setter) -> str:
     return str(p)
 
 
-@app.post("/sources/repo")
+@app.post("/sources/repo", dependencies=[Depends(require_perm("manage_integrations"))])
 async def set_repo_source(req: SourcePathRequest) -> dict:
     resolved = _set_source(req.path, "repo", runtime.set_repo_path)
     await _evict_all()
     return {"repo_path": resolved}
 
 
-@app.post("/sources/logs")
+@app.post("/sources/logs", dependencies=[Depends(require_perm("manage_integrations"))])
 async def set_logs_source(req: SourcePathRequest) -> dict:
     resolved = _set_source(req.path, "logs", runtime.set_logs_path)
     # Soft warning if the expected demo files aren't present.
@@ -634,7 +683,7 @@ async def set_logs_source(req: SourcePathRequest) -> dict:
     return {"logs_path": resolved, "missing_files": missing}
 
 
-@app.post("/reset")
+@app.post("/reset", dependencies=[Depends(require_perm("manage_integrations"))])
 async def reset_config() -> dict:
     """Revert all runtime overrides back to the .env defaults."""
     runtime.reset()
@@ -652,49 +701,53 @@ async def reset_config() -> dict:
     }
 
 
-@app.post("/chat", response_model=ChatResponse)
+@app.post("/chat", response_model=ChatResponse,
+          dependencies=[Depends(require_perm("run_investigation"))])
 async def chat(req: ChatRequest) -> ChatResponse:
     _check_message(req.message)
-    existed = req.thread_id in _SESSIONS
+    tid = _scoped(req.thread_id)  # tenant-namespaced internal key (client sees its own id)
+    existed = tid in _SESSIONS
     try:
-        async with _running_turn(req.thread_id):
-            session = await _get_session(req.thread_id)
+        async with _running_turn(tid):
+            session = await _get_session(tid)
             # Don't run a fresh message on a thread paused mid-approval: it would
             # leave the prior tool_calls unanswered and corrupt the history.
             if await session.pending_interrupt():
-                _AWAITING.add(req.thread_id)
+                _AWAITING.add(tid)
                 raise HTTPException(
                     409,
                     "This thread is paused awaiting approval — approve or reject "
                     "the pending action (POST /approve) before sending a new message.",
                 )
-            _AWAITING.discard(req.thread_id)
+            _AWAITING.discard(tid)
             result = await session.ask(req.message)
             if result.status == "awaiting_approval":
-                _AWAITING.add(req.thread_id)
+                _AWAITING.add(tid)
     except HTTPException:
         raise  # 409/4xx should surface as real HTTP errors, not a 200 error body
     except Exception as exc:  # noqa: BLE001 — surface a clean error to the UI
-        log.exception("chat turn failed (thread=%s)", req.thread_id)
+        log.exception("chat turn failed (thread=%s)", tid)
         # If this session was just created and its first turn failed, drop it so
         # a retry rebuilds cleanly instead of reusing a half-initialized session.
         if not existed:
-            await _evict(req.thread_id)
+            await _evict(tid)
         return ChatResponse(
             thread_id=req.thread_id, status="error", answer=_friendly_error(exc)
         )
     return _to_response(req.thread_id, result)
 
 
-@app.post("/approve", response_model=ChatResponse)
+@app.post("/approve", response_model=ChatResponse,
+          dependencies=[Depends(require_perm("approve_action"))])
 async def approve(req: ApproveRequest) -> ChatResponse:
-    async with _running_turn(req.thread_id):
-        existed = req.thread_id in _SESSIONS
+    tid = _scoped(req.thread_id)
+    async with _running_turn(tid):
+        existed = tid in _SESSIONS
         # Rebuild from the checkpointer if the session was evicted — state survives.
-        session = await _get_session(req.thread_id)
+        session = await _get_session(tid)
         if not await session.pending_interrupt():
             if not existed:
-                await _evict(req.thread_id)  # don't leak a session built just to check
+                await _evict(tid)  # don't leak a session built just to check
             raise HTTPException(
                 404, f"no investigation awaiting approval for thread '{req.thread_id}'"
             )
@@ -702,11 +755,11 @@ async def approve(req: ApproveRequest) -> ChatResponse:
         try:
             result = await session.resume(approved=req.approved, reason=req.reason)
             if result.status == "awaiting_approval":
-                _AWAITING.add(req.thread_id)
+                _AWAITING.add(tid)
             else:
-                _AWAITING.discard(req.thread_id)
+                _AWAITING.discard(tid)
         except Exception as exc:  # noqa: BLE001
-            log.exception("approve/resume failed (thread=%s)", req.thread_id)
+            log.exception("approve/resume failed (thread=%s)", tid)
             return ChatResponse(
                 thread_id=req.thread_id, status="error", answer=_friendly_error(exc)
             )
@@ -739,102 +792,117 @@ def _stream_payload(thread_id: str, ev: dict) -> dict:
     return out
 
 
-@app.post("/chat/stream")
+@app.post("/chat/stream", dependencies=[Depends(require_perm("run_investigation"))])
 async def chat_stream(req: ChatRequest):
     """Stream an investigation live (SSE): one event per graph step, then a
     terminal `approval` or `done` event."""
     _check_message(req.message)  # raise 400/413 before the stream opens
+    tid = _scoped(req.thread_id)
+    # Capture the tenant here (contextvar reliably set in the auth dependency) and
+    # re-establish it inside the generator, which may be iterated after the request
+    # scope unwinds (SSE streaming behind middleware).
+    cfg = tenant_context.get_tenant()
 
     async def gen():
-        async with _running_turn(req.thread_id):
-            existed = req.thread_id in _SESSIONS
-            try:
-                session = await _get_session(req.thread_id)
-                if await session.pending_interrupt():
-                    _AWAITING.add(req.thread_id)
+        tok = tenant_context.set_tenant(cfg)
+        try:
+            async with _running_turn(tid):
+                existed = tid in _SESSIONS
+                try:
+                    session = await _get_session(tid)
+                    if await session.pending_interrupt():
+                        _AWAITING.add(tid)
+                        yield {
+                            "data": json.dumps(
+                                {
+                                    "type": "error",
+                                    "thread_id": req.thread_id,
+                                    "status": "error",
+                                    "answer": "This thread is paused awaiting approval — "
+                                    "approve or reject the pending action first.",
+                                }
+                            )
+                        }
+                        return
+                    _AWAITING.discard(tid)
+                    async for ev in session.ask_stream(req.message):
+                        t = ev.get("type")
+                        if t == "approval":
+                            _AWAITING.add(tid)
+                        elif t == "done":
+                            _AWAITING.discard(tid)
+                        yield {"data": json.dumps(_stream_payload(req.thread_id, ev))}
+                except Exception as exc:  # noqa: BLE001
+                    log.exception("chat stream failed (thread=%s)", tid)
+                    if not existed:
+                        await _evict(tid)
                     yield {
                         "data": json.dumps(
                             {
                                 "type": "error",
                                 "thread_id": req.thread_id,
                                 "status": "error",
-                                "answer": "This thread is paused awaiting approval — "
-                                "approve or reject the pending action first.",
+                                "answer": _friendly_error(exc),
                             }
                         )
                     }
-                    return
-                _AWAITING.discard(req.thread_id)
-                async for ev in session.ask_stream(req.message):
-                    t = ev.get("type")
-                    if t == "approval":
-                        _AWAITING.add(req.thread_id)
-                    elif t == "done":
-                        _AWAITING.discard(req.thread_id)
-                    yield {"data": json.dumps(_stream_payload(req.thread_id, ev))}
-            except Exception as exc:  # noqa: BLE001
-                log.exception("chat stream failed (thread=%s)", req.thread_id)
-                if not existed:
-                    await _evict(req.thread_id)
-                yield {
-                    "data": json.dumps(
-                        {
-                            "type": "error",
-                            "thread_id": req.thread_id,
-                            "status": "error",
-                            "answer": _friendly_error(exc),
-                        }
-                    )
-                }
+        finally:
+            tenant_context.reset_tenant(tok)
 
     return EventSourceResponse(gen())
 
 
-@app.post("/approve/stream")
+@app.post("/approve/stream", dependencies=[Depends(require_perm("approve_action"))])
 async def approve_stream(req: ApproveRequest):
     """Stream the resume of a paused (approval) turn via SSE."""
+    tid = _scoped(req.thread_id)
+    cfg = tenant_context.get_tenant()
 
     async def gen():
-        async with _running_turn(req.thread_id):
-            existed = req.thread_id in _SESSIONS
-            session = await _get_session(req.thread_id)  # rebuild from checkpointer if evicted
-            if not await session.pending_interrupt():
-                if not existed:
-                    await _evict(req.thread_id)
-                yield {
-                    "data": json.dumps(
-                        {
-                            "type": "error",
-                            "thread_id": req.thread_id,
-                            "status": "error",
-                            "answer": f"no investigation awaiting approval for thread '{req.thread_id}'",
-                        }
-                    )
-                }
-                return
-            audit.record("approval.decided", thread=req.thread_id, approved=req.approved)
-            try:
-                async for ev in session.resume_stream(
-                    approved=req.approved, reason=req.reason
-                ):
-                    t = ev.get("type")
-                    if t == "approval":
-                        _AWAITING.add(req.thread_id)
-                    elif t == "done":
-                        _AWAITING.discard(req.thread_id)
-                    yield {"data": json.dumps(_stream_payload(req.thread_id, ev))}
-            except Exception as exc:  # noqa: BLE001
-                log.exception("approve stream failed (thread=%s)", req.thread_id)
-                yield {
-                    "data": json.dumps(
-                        {
-                            "type": "error",
-                            "thread_id": req.thread_id,
-                            "status": "error",
-                            "answer": _friendly_error(exc),
-                        }
-                    )
-                }
+        tok = tenant_context.set_tenant(cfg)
+        try:
+            async with _running_turn(tid):
+                existed = tid in _SESSIONS
+                session = await _get_session(tid)  # rebuild from checkpointer if evicted
+                if not await session.pending_interrupt():
+                    if not existed:
+                        await _evict(tid)
+                    yield {
+                        "data": json.dumps(
+                            {
+                                "type": "error",
+                                "thread_id": req.thread_id,
+                                "status": "error",
+                                "answer": f"no investigation awaiting approval for thread '{req.thread_id}'",
+                            }
+                        )
+                    }
+                    return
+                audit.record("approval.decided", thread=req.thread_id, approved=req.approved)
+                try:
+                    async for ev in session.resume_stream(
+                        approved=req.approved, reason=req.reason
+                    ):
+                        t = ev.get("type")
+                        if t == "approval":
+                            _AWAITING.add(tid)
+                        elif t == "done":
+                            _AWAITING.discard(tid)
+                        yield {"data": json.dumps(_stream_payload(req.thread_id, ev))}
+                except Exception as exc:  # noqa: BLE001
+                    log.exception("approve stream failed (thread=%s)", tid)
+                    yield {
+                        "data": json.dumps(
+                            {
+                                "type": "error",
+                                "thread_id": req.thread_id,
+                                "status": "error",
+                                "answer": _friendly_error(exc),
+                            }
+                        )
+                    }
+        finally:
+            tenant_context.reset_tenant(tok)
 
     return EventSourceResponse(gen())
 
