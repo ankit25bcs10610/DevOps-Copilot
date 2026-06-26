@@ -1740,10 +1740,17 @@ input {
 .rca {
   margin-top: 14px;
   border: 1px solid var(--border);
+  border-top: 2px solid var(--border);
   background: linear-gradient(180deg, var(--panel-2), var(--panel));
   border-radius: var(--radius-sm);
   overflow: hidden;
 }
+/* Severity-coded top accent — scannable depth (avoids flat-without-depth). */
+.rca--sev1 { border-top-color: #ff5a5a; }
+.rca--sev2 { border-top-color: var(--bad); }
+.rca--sev3 { border-top-color: var(--warn); }
+.rca--sev4 { border-top-color: #cbb85f; }
+.rca--info { border-top-color: var(--accent); }
 .rca__head {
   width: 100%;
   display: flex;
@@ -1930,8 +1937,8 @@ input {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  width: 32px;
+  height: 32px;
   padding: 0;
   color: var(--text-faint);
   background: transparent;

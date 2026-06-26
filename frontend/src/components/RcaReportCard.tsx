@@ -39,7 +39,7 @@ export function RcaReportCard({ report }: { report: RcaReport }) {
   const conf: Confidence = report.calibrated_confidence ?? report.confidence ?? "low";
 
   return (
-    <section className="rca" aria-label="Root cause analysis report">
+    <section className={`rca rca--${sev.toLowerCase()}`} aria-label="Root cause analysis report">
       <button
         className="rca__head"
         onClick={() => setOpen((v) => !v)}
