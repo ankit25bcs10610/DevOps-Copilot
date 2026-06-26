@@ -23,6 +23,21 @@ def test_datadog_offline_lists_services():
     assert "checkout-svc" in dd._offline_services()
 
 
+def test_cluster_logs_collapses_lines_into_templates():
+    # Many near-identical error lines should mask down to ONE template.
+    lines = [
+        '2026-06-23T10:01:15Z ERROR checkout-svc request_id=b2 status=500 latency_ms=88 error="TypeError at applyDiscount (checkout.js:42)"',
+        '2026-06-23T10:01:48Z ERROR checkout-svc request_id=b3 status=500 latency_ms=91 error="TypeError at applyDiscount (checkout.js:42)"',
+        '2026-06-23T09:58:01Z INFO  checkout-svc request_id=a1 status=200 latency_ms=142',
+    ]
+    templates = dd._mine_templates(lines)
+    # 2 distinct templates (one ERROR, one INFO), error template has count 2
+    assert len(templates) == 2
+    err = [t for t in templates if t["level"] == "ERROR"][0]
+    assert err["count"] == 2
+    assert "<NUM>" in err["template"]
+
+
 def test_datadog_offline_metric_has_trend_and_series():
     m = dd._offline_metric("checkout-svc", "error_rate_5xx")
     assert m.get("series")

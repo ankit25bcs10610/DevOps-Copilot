@@ -51,7 +51,7 @@ MCP_CATALOG = [
         "label": "Datadog",
         "custom": True,
         "tools": [
-            "search_logs", "get_error_summary", "get_metric", "list_services",
+            "search_logs", "get_error_summary", "cluster_logs", "get_metric", "list_services",
             "detect_anomaly", "compute_burn_rate", "onset_timeline",
         ],
     },

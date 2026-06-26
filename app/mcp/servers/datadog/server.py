@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from collections import Counter
 from pathlib import Path
@@ -422,6 +423,53 @@ def onset_timeline() -> list[dict]:
                                "direction": det.get("direction")})
     events.sort(key=lambda e: str(e.get("onset_ts") or ""))
     return events
+
+
+# Variable-token maskers (order matters: timestamps + ids before bare numbers).
+_MASKERS = [
+    (re.compile(r"\d{4}-\d{2}-\d{2}T[\d:.Z+-]+"), "<TS>"),
+    (re.compile(r"\b(?:request_id|trace_id|span_id|id)=\S+"), r"<ID>"),
+    (re.compile(r"\b[0-9a-f]{8,}\b"), "<HEX>"),
+    (re.compile(r"\b\d+\b"), "<NUM>"),
+]
+
+
+def _mask(line: str) -> str:
+    """Collapse a log line to a template by masking variable tokens (timestamps,
+    ids, hashes, numbers) — the core of Drain-style log clustering."""
+    for pat, repl in _MASKERS:
+        line = pat.sub(repl, line)
+    return line
+
+
+def _mine_templates(lines: list[str]) -> list[dict]:
+    """Cluster log lines into templates (masked) ranked by frequency. Pure +
+    testable. Each template carries a count, inferred level, and an example."""
+    counter: Counter[str] = Counter()
+    example: dict[str, str] = {}
+    level: dict[str, str] = {}
+    for ln in lines:
+        tmpl = _mask(ln)
+        counter[tmpl] += 1
+        if tmpl not in example:
+            example[tmpl] = ln
+            parts = ln.split()
+            lvl = parts[1] if len(parts) >= 2 else ""
+            level[tmpl] = lvl if lvl in ("INFO", "WARN", "ERROR", "DEBUG") else "?"
+    return [
+        {"template": t, "count": c, "level": level.get(t, "?"), "example": example.get(t, "")}
+        for t, c in counter.most_common()
+    ]
+
+
+@mcp.tool()
+def cluster_logs(service: str | None = None, level: str | None = None) -> list[dict]:
+    """Cluster logs into TEMPLATES by masking variable tokens (ids, numbers,
+    timestamps), so a flood of near-identical lines collapses to a few patterns
+    ranked by frequency — far more signal than raw grep, and it surfaces the
+    dominant error template fast. Returns {template, count, level, example}."""
+    lines = search_logs(service=service, level=level, limit=1000)
+    return _mine_templates(lines)
 
 
 @mcp.tool()

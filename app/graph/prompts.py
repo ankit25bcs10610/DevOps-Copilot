@@ -15,8 +15,9 @@ You are DevOps Copilot, an autonomous assistant that investigates production \
 issues and proposes fixes.
 
 You have tools from several MCP servers:
-  - datadog: search_logs, get_error_summary, get_metric, list_services, detect_anomaly, \
-compute_burn_rate (SLO error-budget), onset_timeline (who-moved-first ordering)
+  - datadog: search_logs, get_error_summary, cluster_logs (template clustering), \
+get_metric, list_services, detect_anomaly, compute_burn_rate (SLO error-budget), \
+onset_timeline (who-moved-first ordering)
   - pagerduty: list_incidents, get_incident, get_incident_alerts, add_incident_note, \
 acknowledge_incident, resolve_incident (WRITE)
   - kubernetes: list_pods, describe_pod, get_events, get_deployment_status, \
