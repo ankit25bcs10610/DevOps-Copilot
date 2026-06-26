@@ -24,7 +24,7 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
 
-from app import audit, guardrails
+from app import audit, guardrails, redaction
 from app.config import get_settings
 from app.graph.edges import route_after_agent, route_after_approval, route_after_reflect
 from app.graph.nodes import (
@@ -51,10 +51,14 @@ def make_guarded_tool_node(tools):
         out: list = []
         for m in result.get("messages", []):
             if isinstance(m, ToolMessage):
-                clean, flags = guardrails.sanitize_tool_output(
-                    m.name or "tool",
-                    m.content if isinstance(m.content, str) else str(m.content),
-                )
+                raw = m.content if isinstance(m.content, str) else str(m.content)
+                # 1) Redact PII/secrets BEFORE the model sees it or state persists it.
+                redacted, entities = redaction.scrub(raw)
+                if entities:
+                    audit.record("telemetry.redacted", tool=m.name, count=len(entities),
+                                 types=sorted({e["type"] for e in entities}))
+                # 2) Provenance-box + injection-scan the (already redacted) output.
+                clean, flags = guardrails.sanitize_tool_output(m.name or "tool", redacted)
                 if flags:
                     log.warning("prompt-injection patterns in %s output: %s", m.name, flags)
                     audit.record("security.prompt_injection_detected", tool=m.name, patterns=flags)

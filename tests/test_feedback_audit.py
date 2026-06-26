@@ -39,3 +39,27 @@ def test_feedback_rejects_bad_rating(monkeypatch):
     monkeypatch.setattr(feedback, "_LOG_PATH", "")
     with pytest.raises(ValueError):
         feedback.record_feedback("web-1", "meh")
+
+
+# --- tamper-evident audit chain ------------------------------------------- #
+def test_audit_chain_verifies_when_intact():
+    audit.clear()
+    audit.record("a")
+    audit.record("b", x=1)
+    audit.record("c")
+    res = audit.verify_chain()
+    assert res["valid"] is True
+    assert res["count"] == 3
+
+
+def test_audit_chain_detects_tampering():
+    audit.clear()
+    audit.record("a")
+    audit.record("b", x=1)
+    audit.record("c")
+    # tamper with the middle entry in place
+    list(audit._BUFFER)[1]["x"] = 999
+    res = audit.verify_chain()
+    assert res["valid"] is False
+    assert res["broken_at"] == 1
+

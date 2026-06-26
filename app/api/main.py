@@ -979,6 +979,13 @@ async def get_audit(limit: int = 100, event_prefix: str = "") -> dict:
     return {"events": audit.recent(limit=limit, event_prefix=event_prefix)}
 
 
+@app.get("/audit/verify")
+async def audit_verify() -> dict:
+    """Verify the audit hash-chain is intact (tamper-evidence) — reports the first
+    broken link if any. The integrity artifact auditors request."""
+    return audit.verify_chain()
+
+
 # --------------------------------------------------------------------------- #
 # Admin / tenant self-management (multi-tenant only; RBAC-gated).
 # Org provisioning (the first owner key) is done out-of-band via the CLI:

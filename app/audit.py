@@ -11,6 +11,7 @@ the SOC2 / compliance requirement, so it's built in here.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -25,10 +26,25 @@ _audit = logging.getLogger("devcopilot.audit")
 _BUFFER: deque[dict] = deque(maxlen=2000)
 # Optional durable sink — one JSON object per line.
 _LOG_PATH = os.environ.get("COPILOT_AUDIT_LOG", "").strip()
+# Running hash of the chain (tamper-evidence): each entry's hash folds in the
+# previous one, so editing/deleting any entry breaks every hash after it.
+_LAST_HASH = ""
+
+
+def _canonical(entry: dict) -> str:
+    """Stable serialization of an entry EXCLUDING the chain fields, for hashing."""
+    body = {k: v for k, v in entry.items() if k not in ("hash", "prev_hash")}
+    return json.dumps(body, default=str, sort_keys=True)
+
+
+def _chain_hash(entry: dict, prev_hash: str) -> str:
+    return hashlib.sha256((_canonical(entry) + prev_hash).encode()).hexdigest()
 
 
 def record(event: str, **fields) -> None:
-    """Record one audit event, e.g. record("approval.decided", thread="t", approved=True)."""
+    """Record one audit event, e.g. record("approval.decided", thread="t", approved=True).
+    Each entry is hash-chained to the previous, making the trail tamper-evident."""
+    global _LAST_HASH
     entry = {
         "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "event": event,
@@ -39,6 +55,9 @@ def record(event: str, **fields) -> None:
         "actor": tenant_context.get_actor(),
         **fields,
     }
+    entry["prev_hash"] = _LAST_HASH
+    entry["hash"] = _chain_hash(entry, _LAST_HASH)
+    _LAST_HASH = entry["hash"]
     _audit.info("audit event=%s %s", event, json.dumps(fields, default=str, sort_keys=True))
     _BUFFER.append(entry)
     if _LOG_PATH:
@@ -47,6 +66,20 @@ def record(event: str, **fields) -> None:
                 fh.write(json.dumps(entry, default=str) + "\n")
         except OSError:
             _audit.warning("could not append to audit log %s", _LOG_PATH)
+
+
+def verify_chain(events: list[dict] | None = None) -> dict:
+    """Recompute the hash chain (oldest→newest) and report the first broken link —
+    the artifact auditors ask for. Defaults to the in-memory buffer."""
+    items = events if events is not None else list(_BUFFER)
+    prev = ""
+    for i, e in enumerate(items):
+        expected = _chain_hash(e, prev)
+        if e.get("hash") != expected or e.get("prev_hash") != prev:
+            return {"valid": False, "checked": i, "broken_at": i,
+                    "event": e.get("event"), "count": len(items)}
+        prev = e["hash"]
+    return {"valid": True, "count": len(items)}
 
 
 def recent(limit: int = 100, event_prefix: str = "") -> list[dict]:
@@ -59,5 +92,7 @@ def recent(limit: int = 100, event_prefix: str = "") -> list[dict]:
 
 
 def clear() -> None:
-    """Drop buffered events (used by tests)."""
+    """Drop buffered events + reset the chain (used by tests)."""
+    global _LAST_HASH
     _BUFFER.clear()
+    _LAST_HASH = ""
