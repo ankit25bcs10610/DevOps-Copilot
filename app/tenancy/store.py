@@ -35,6 +35,14 @@ def _now() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
+def _now_plus_days(days: int) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + days * 86400))
+
+
+# Default API-key lifetime (days). Permanent keys are a top 2026 anti-pattern.
+_DEFAULT_KEY_TTL_DAYS = 90
+
+
 def _id() -> str:
     return uuid.uuid4().hex
 
@@ -58,7 +66,8 @@ CREATE TABLE IF NOT EXISTS memberships (
 CREATE TABLE IF NOT EXISTS api_keys (
     id TEXT PRIMARY KEY, org_id TEXT NOT NULL, prefix TEXT UNIQUE NOT NULL,
     secret_hash TEXT NOT NULL, name TEXT DEFAULT '', role TEXT NOT NULL,
-    created_at TEXT NOT NULL, last_used_at TEXT DEFAULT '', revoked_at TEXT DEFAULT ''
+    created_at TEXT NOT NULL, last_used_at TEXT DEFAULT '', revoked_at TEXT DEFAULT '',
+    expires_at TEXT DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS integration_secrets (
     org_id TEXT NOT NULL, name TEXT NOT NULL, value_encrypted TEXT NOT NULL,
@@ -66,9 +75,13 @@ CREATE TABLE IF NOT EXISTS integration_secrets (
 );
 CREATE TABLE IF NOT EXISTS usage (
     id TEXT PRIMARY KEY, org_id TEXT NOT NULL, kind TEXT NOT NULL,
-    amount INTEGER NOT NULL, ts TEXT NOT NULL, meta TEXT DEFAULT '{}'
+    amount INTEGER NOT NULL, ts TEXT NOT NULL, meta TEXT DEFAULT '{}',
+    event_key TEXT DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_usage_org_kind_ts ON usage (org_id, kind, ts);
+-- Idempotency: a non-empty event_key is unique, so a retried/replayed turn is
+-- recorded at most once (prevents double-billing). Empty keys are unconstrained.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_event_key ON usage (event_key) WHERE event_key != '';
 """
 
 
@@ -172,20 +185,23 @@ class TenantStore:
         return int(row[0]) if row else 0
 
     # --- API keys --------------------------------------------------------- #
-    async def issue_api_key(self, org_id: str, name: str = "", role: str = "responder") -> tuple[str, ApiKey]:
-        """Create a key; returns (plaintext_key, record). The plaintext is shown ONCE."""
+    async def issue_api_key(self, org_id: str, name: str = "", role: str = "responder",
+                            ttl_days: int = _DEFAULT_KEY_TTL_DAYS) -> tuple[str, ApiKey]:
+        """Create a key; returns (plaintext_key, record). The plaintext is shown ONCE.
+        Keys expire after ttl_days (0 = never) — rotate before expiry."""
         prefix = secrets.token_hex(4)
         raw = secrets.token_hex(24)
         plaintext = f"{_KEY_PREFIX}_{prefix}_{raw}"
+        expires_at = _now_plus_days(ttl_days) if ttl_days > 0 else ""
         rec = ApiKey(id=_id(), org_id=org_id, prefix=prefix, name=name,
-                     role=normalize_role(role), created_at=_now())
+                     role=normalize_role(role), created_at=_now(), expires_at=expires_at)
         import aiosqlite
 
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
-                "INSERT INTO api_keys (id, org_id, prefix, secret_hash, name, role, created_at) "
-                "VALUES (?,?,?,?,?,?,?)",
-                (rec.id, org_id, prefix, _hash_secret(raw), name, rec.role, rec.created_at),
+                "INSERT INTO api_keys (id, org_id, prefix, secret_hash, name, role, created_at, expires_at) "
+                "VALUES (?,?,?,?,?,?,?,?)",
+                (rec.id, org_id, prefix, _hash_secret(raw), name, rec.role, rec.created_at, expires_at),
             )
             await db.commit()
         return plaintext, rec
@@ -200,8 +216,8 @@ class TenantStore:
 
         async with aiosqlite.connect(self.db_path) as db:
             async with db.execute(
-                "SELECT id, org_id, prefix, secret_hash, name, role, created_at, last_used_at, revoked_at "
-                "FROM api_keys WHERE prefix=?",
+                "SELECT id, org_id, prefix, secret_hash, name, role, created_at, last_used_at, "
+                "revoked_at, expires_at FROM api_keys WHERE prefix=?",
                 (prefix,),
             ) as cur:
                 row = await cur.fetchone()
@@ -211,10 +227,12 @@ class TenantStore:
                 return None
             if row[8]:  # revoked_at
                 return None
+            if row[9] and row[9] <= _now():  # expired
+                return None
             await db.execute("UPDATE api_keys SET last_used_at=? WHERE id=?", (_now(), row[0]))
             await db.commit()
         key = ApiKey(id=row[0], org_id=row[1], prefix=row[2], name=row[4], role=row[5],
-                     created_at=row[6], last_used_at=_now(), revoked_at=row[8])
+                     created_at=row[6], last_used_at=_now(), revoked_at=row[8], expires_at=row[9])
         org = await self.get_org(key.org_id)
         return (org, key) if org else None
 
@@ -308,13 +326,18 @@ class TenantStore:
         return int(row[0]) if row else 0
 
     # --- usage metering --------------------------------------------------- #
-    async def record_usage(self, org_id: str, kind: str, amount: int = 1, meta: dict | None = None) -> None:
+    async def record_usage(self, org_id: str, kind: str, amount: int = 1,
+                           meta: dict | None = None, event_key: str = "") -> None:
+        """Append a usage event. A non-empty event_key is idempotent (INSERT OR
+        IGNORE on the unique index), so a retried/replayed turn isn't double-counted."""
         import aiosqlite
 
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
-                "INSERT INTO usage (id, org_id, kind, amount, ts, meta) VALUES (?,?,?,?,?,?)",
-                (_id(), org_id, kind, int(amount), _now(), json.dumps(meta or {}, default=str)),
+                "INSERT OR IGNORE INTO usage (id, org_id, kind, amount, ts, meta, event_key) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (_id(), org_id, kind, int(amount), _now(),
+                 json.dumps(meta or {}, default=str), event_key),
             )
             await db.commit()
 

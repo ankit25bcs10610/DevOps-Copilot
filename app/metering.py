@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 
-from app import tenant_context
+from app import observability, tenant_context
 from app.tenancy import auth as tenant_auth
 from app.tenancy.models import quota, within_quota
 from app.tenancy.store import month_start
@@ -19,17 +19,22 @@ from app.tenancy.store import month_start
 log = logging.getLogger("devcopilot.metering")
 
 
-async def record_investigation(tokens: int = 0) -> None:
+async def record_investigation(tokens: int = 0, idem: str = "") -> None:
     """Record one conclusive investigation (+ its token cost) for the current
-    tenant. Best-effort: a metering failure never breaks the user's request."""
+    tenant. Idempotent per request (so a double-fire isn't double-billed); best-
+    effort: a metering failure never breaks the user's request."""
     cfg = tenant_context.get_tenant()
     if cfg is None:
         return
+    # Deterministic key so the same logical completion records at most once.
+    key = idem or observability.request_id_var.get()
     try:
         store = tenant_auth.get_store()
-        await store.record_usage(cfg.org_id, "investigation", 1, {"tokens": tokens})
+        await store.record_usage(cfg.org_id, "investigation", 1, {"tokens": tokens},
+                                 event_key=f"{cfg.org_id}:investigation:{key}")
         if tokens:
-            await store.record_usage(cfg.org_id, "tokens", int(tokens))
+            await store.record_usage(cfg.org_id, "tokens", int(tokens),
+                                     event_key=f"{cfg.org_id}:tokens:{key}")
     except Exception:  # noqa: BLE001
         log.exception("usage metering failed (org=%s)", cfg.org_id)
 

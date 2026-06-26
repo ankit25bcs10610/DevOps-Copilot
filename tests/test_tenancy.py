@@ -109,6 +109,49 @@ def test_usage_metering_and_quota(tmp_path):
     _run(scenario())
 
 
+def test_usage_idempotency_dedupes_by_event_key(tmp_path):
+    s = _store(tmp_path)
+
+    async def scenario():
+        org = await s.create_org("Acme")
+        await s.record_usage(org.id, "investigation", 1, event_key="k1")
+        await s.record_usage(org.id, "investigation", 1, event_key="k1")  # duplicate -> ignored
+        await s.record_usage(org.id, "investigation", 1, event_key="k2")
+        total = await s.usage_total(org.id, "investigation", since=month_start())
+        assert total == 2  # k1 counted once, k2 once — no double-billing
+
+    _run(scenario())
+
+
+def test_api_key_has_default_expiry_and_resolves(tmp_path):
+    s = _store(tmp_path)
+
+    async def scenario():
+        org = await s.create_org("Acme")
+        plaintext, rec = await s.issue_api_key(org.id, "k", role="admin")
+        assert rec.expires_at  # default 90-day expiry is set
+        assert await s.resolve_api_key(plaintext) is not None  # not yet expired
+
+    _run(scenario())
+
+
+def test_expired_api_key_is_rejected(tmp_path):
+    s = _store(tmp_path)
+
+    async def scenario():
+        import aiosqlite
+
+        org = await s.create_org("Acme")
+        plaintext, rec = await s.issue_api_key(org.id, "k")
+        async with aiosqlite.connect(s.db_path) as db:  # backdate expiry into the past
+            await db.execute("UPDATE api_keys SET expires_at=? WHERE id=?",
+                             ("2000-01-01T00:00:00Z", rec.id))
+            await db.commit()
+        assert await s.resolve_api_key(plaintext) is None
+
+    _run(scenario())
+
+
 def test_postgres_url_rejected_clearly():
     with pytest.raises(RuntimeError):
         TenantStore("postgresql://example/db")

@@ -100,6 +100,7 @@ class ApiKey:
     created_at: str = ""
     last_used_at: str = ""
     revoked_at: str = ""
+    expires_at: str = ""
 
     @property
     def active(self) -> bool:
