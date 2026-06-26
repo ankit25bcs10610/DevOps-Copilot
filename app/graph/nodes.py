@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.types import interrupt
@@ -423,6 +424,63 @@ def _calibrate_confidence(report: dict) -> dict:
     return report
 
 
+_GROUND_STOP = {
+    "the", "and", "for", "with", "that", "this", "from", "into", "was", "were",
+    "has", "have", "not", "but", "its", "are", "out", "due", "see", "via",
+}
+
+
+def _salient_tokens(text: str) -> set[str]:
+    return {t for t in re.findall(r"[a-z0-9_./:]{3,}", (text or "").lower())} - _GROUND_STOP
+
+
+def _verify_grounding(report: dict, evidence_digest: str) -> dict:
+    """Deterministic critic pass: check that the report's cited evidence actually
+    appears in the REAL tool output (the evidence digest). An evidence item whose
+    salient tokens barely overlap the observed data is likely fabricated/overstated.
+    If the verdict isn't corroborated, downgrade confidence and abstain. Pure +
+    free (no extra LLM call), so the critic itself can't hallucinate.
+
+    Adds report["grounding"] = {checked, grounded, ratio, ungrounded_examples}.
+    """
+    digest_tokens = _salient_tokens(evidence_digest)
+    items = list(report.get("evidence") or [])
+    for h in report.get("hypotheses") or []:
+        items += list(h.get("evidence") or [])
+
+    if not digest_tokens or not items:
+        report["grounding"] = {"checked": 0, "grounded": 0, "ratio": None,
+                               "ungrounded_examples": []}
+        return report
+
+    grounded = 0
+    ungrounded: list[str] = []
+    for ev in items:
+        toks = _salient_tokens(ev)
+        if not toks:
+            continue
+        overlap = len(toks & digest_tokens) / len(toks)
+        if overlap >= 0.4:
+            grounded += 1
+        else:
+            ungrounded.append(ev)
+    checked = grounded + len(ungrounded)
+    ratio = grounded / checked if checked else None
+    report["grounding"] = {
+        "checked": checked, "grounded": grounded, "ratio": round(ratio, 2) if ratio is not None else None,
+        "ungrounded_examples": ungrounded[:3],
+    }
+    # Poorly-corroborated verdict (most cited evidence isn't in the observed data)
+    # -> don't present it as confident.
+    if checked >= 2 and ratio is not None and ratio < 0.5:
+        report["calibrated_confidence"] = "low"
+        report["abstained"] = True
+        needs = list(report.get("needs") or [])
+        needs.append("Cited evidence is not corroborated by the observed tool output — re-verify each claim against logs/metrics/traces.")
+        report["needs"] = needs
+    return report
+
+
 def _render_postmortem(report: dict, request: str) -> str:
     """Render a blameless, copy-pasteable postmortem from the RCA object. Pure:
     deterministic Markdown, no extra LLM call. Roles/actions, never names."""
@@ -505,6 +563,7 @@ def make_report_node():
             log.exception("report synthesis failed; using fallback report")
             report = _parse_report("", fallback_summary=final_answer)
         report = _calibrate_confidence(report)
+        report = _verify_grounding(report, digest)  # deterministic critic pass
         report["postmortem"] = _render_postmortem(report, request)
         return {"report": report, "status": "done", "tokens_used": tokens}
 

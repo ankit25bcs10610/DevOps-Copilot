@@ -13,6 +13,7 @@ from app.graph.nodes import (
     _over_token_budget,
     _parse_report,
     _render_postmortem,
+    _verify_grounding,
 )
 from app.graph.state import _add_int
 
@@ -115,6 +116,38 @@ def test_calibrate_confidence_abstains_on_thin_report():
     assert r["calibrated_confidence"] == "low"
     assert r["abstained"] is True
     assert r["needs"]  # names what's missing
+
+
+def test_verify_grounding_passes_when_evidence_is_in_tool_output():
+    report = {
+        "evidence": ["error_rate_5xx rose to 0.71", "applyDiscount checkout.js:42 TypeError"],
+        "hypotheses": [], "calibrated_confidence": "high", "abstained": False,
+    }
+    digest = (
+        "[search_logs] ERROR checkout-svc TypeError ... applyDiscount (checkout.js:42)\n"
+        "[get_metric] error_rate_5xx series latest 0.71 trend rising"
+    )
+    out = _verify_grounding(report, digest)
+    assert out["grounding"]["ratio"] >= 0.5
+    assert out["abstained"] is False  # corroborated -> not downgraded
+
+
+def test_verify_grounding_abstains_on_fabricated_evidence():
+    report = {
+        "evidence": ["redis cache eviction storm overwhelmed the cluster",
+                     "kafka consumer lag exceeded one million messages"],
+        "hypotheses": [], "calibrated_confidence": "high", "abstained": False,
+    }
+    digest = "[search_logs] ERROR checkout-svc TypeError applyDiscount checkout.js:42"
+    out = _verify_grounding(report, digest)
+    assert out["grounding"]["ratio"] < 0.5
+    assert out["abstained"] is True  # not corroborated -> downgraded
+    assert any("corroborated" in n for n in out["needs"])
+
+
+def test_verify_grounding_noop_without_digest_or_evidence():
+    out = _verify_grounding({"evidence": [], "hypotheses": []}, "")
+    assert out["grounding"]["checked"] == 0
 
 
 def test_postmortem_flags_insufficient_evidence_when_abstained():
