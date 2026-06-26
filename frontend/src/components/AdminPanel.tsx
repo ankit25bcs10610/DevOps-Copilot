@@ -19,6 +19,8 @@ export function AdminPanel({ onClose }: { onClose: () => void }) {
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [error, setError] = useState("");
 
+  const [outdated, setOutdated] = useState(false);
+
   const refresh = async () => {
     try {
       const u = await api.getUsage();
@@ -37,7 +39,15 @@ export function AdminPanel({ onClose }: { onClose: () => void }) {
       setKeys(k.api_keys);
       setEvents(a.events);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      // A 404 on /usage means the running backend predates the admin/usage API —
+      // i.e. it's an outdated build. Degrade to a clear notice, not a raw error.
+      if (msg.includes("404")) {
+        setEnabled(false);
+        setOutdated(true);
+        return;
+      }
+      setError(msg);
     }
   };
 
@@ -84,7 +94,16 @@ export function AdminPanel({ onClose }: { onClose: () => void }) {
 
         {error && <div className="admin__err" role="alert">{error}</div>}
 
-        {enabled === false && (
+        {enabled === false && outdated && (
+          <p className="admin__note">
+            The API server doesn&apos;t expose the admin endpoints — it&apos;s running an{" "}
+            <strong>outdated build</strong>. Restart it from the latest code
+            (<code>uvicorn app.api.main:app</code>), then reopen this console. For tenant
+            management, also set <code>COPILOT_MULTI_TENANT=true</code>.
+          </p>
+        )}
+
+        {enabled === false && !outdated && (
           <p className="admin__note">
             Multi-tenant mode is off — admin features are available when the backend runs with
             <code> COPILOT_MULTI_TENANT=true</code>. See <code>docs/COMMERCIALIZATION.md</code>.

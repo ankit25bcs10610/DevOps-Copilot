@@ -15,19 +15,40 @@ const PIPELINE = [
   { icon: "download", name: "Report", desc: "Deliver a structured RCA + postmortem." },
 ];
 
-const FEATURES = [
-  { icon: "insight", title: "Root-cause reports", sub: "Ranked hypotheses + postmortem" },
-  { icon: "server", title: "9 MCP tool servers", sub: "Logs · traces · k8s · sentry · deploys" },
-  { icon: "lock", title: "Risk-tiered approval", sub: "Human-in-the-loop before writes" },
-  { icon: "alert", title: "Injection + PII guardrails", sub: "Untrusted telemetry scrubbed" },
-  { icon: "cpu", title: "Token budget", sub: "Per-investigation cost kill-switch" },
-  { icon: "branch", title: "Multi-tenant + RBAC", sub: "Orgs · roles · scoped API keys" },
-  { icon: "database", title: "Usage metering & billing", sub: "Plan quotas · Stripe sync" },
-  { icon: "check", title: "Tamper-evident audit", sub: "Hash-chained, verifiable trail" },
-  { icon: "tool", title: "SSO login", sub: "Supabase / OIDC JWT" },
-  { icon: "refresh", title: "Deterministic evals", sub: "Record/replay golden gate" },
-  { icon: "send", title: "Triggered → Slack", sub: "PagerDuty auto-investigate + approve" },
-  { icon: "sparkles", title: "Datadog APM + LLMObs", sub: "Trace the agent itself" },
+const PILLARS = [
+  {
+    icon: "search",
+    name: "Autonomous investigation",
+    tag: "From alert to root cause — hands-off",
+    items: [
+      { icon: "insight", title: "Root-cause reports", sub: "Ranked hypotheses + postmortem" },
+      { icon: "server", title: "9 MCP tool servers", sub: "Logs · traces · k8s · sentry · deploys" },
+      { icon: "send", title: "Triggered → Slack", sub: "PagerDuty auto-investigate + approve" },
+      { icon: "refresh", title: "Deterministic evals", sub: "Record/replay golden gate" },
+    ],
+  },
+  {
+    icon: "lock",
+    name: "Safe by design",
+    tag: "Guardrails before any write",
+    items: [
+      { icon: "pause", title: "Risk-tiered approval", sub: "Human-in-the-loop before writes" },
+      { icon: "alert", title: "Injection + PII guardrails", sub: "Untrusted telemetry scrubbed" },
+      { icon: "cpu", title: "Token budget", sub: "Per-investigation cost kill-switch" },
+      { icon: "check", title: "Tamper-evident audit", sub: "Hash-chained, verifiable trail" },
+    ],
+  },
+  {
+    icon: "branch",
+    name: "Enterprise SaaS",
+    tag: "Multi-tenant from day one",
+    items: [
+      { icon: "branch", title: "Multi-tenant + RBAC", sub: "Orgs · roles · scoped API keys" },
+      { icon: "database", title: "Usage metering & billing", sub: "Plan quotas · Stripe sync" },
+      { icon: "tool", title: "SSO login", sub: "Supabase / OIDC JWT" },
+      { icon: "sparkles", title: "Datadog APM + LLMObs", sub: "Trace the agent itself" },
+    ],
+  },
 ];
 
 function Sparkline({ data, color }: { data: number[]; color: string }) {
@@ -435,17 +456,32 @@ export function Landing({ onLaunch }: { onLaunch: () => void }) {
             SSO and observability are built in, not bolted on.
           </p>
         </div>
-        <div className="cap-grid">
-          {FEATURES.map((f) => (
-            <div key={f.title} className="tech cap">
-              <span className="tech__icon">
-                <Icon name={f.icon} size={18} />
-              </span>
-              <span className="tech__txt">
-                <strong>{f.title}</strong>
-                <span>{f.sub}</span>
-              </span>
-            </div>
+        <div className="pillars">
+          {PILLARS.map((p) => (
+            <article key={p.name} className="pillar">
+              <header className="pillar__head">
+                <span className="pillar__icon">
+                  <Icon name={p.icon} size={20} />
+                </span>
+                <div className="pillar__heading">
+                  <h3>{p.name}</h3>
+                  <p>{p.tag}</p>
+                </div>
+              </header>
+              <ul className="pillar__list">
+                {p.items.map((f) => (
+                  <li key={f.title}>
+                    <span className="pillar__bullet">
+                      <Icon name={f.icon} size={15} />
+                    </span>
+                    <span className="pillar__txt">
+                      <strong>{f.title}</strong>
+                      <span>{f.sub}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </article>
           ))}
         </div>
       </section>
