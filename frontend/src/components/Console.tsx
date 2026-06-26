@@ -11,25 +11,26 @@ import { Sidebar } from "./Sidebar";
 import { ThemePicker } from "./ThemePicker";
 
 const PIPELINE = [
-  { n: 1, icon: "clipboard", name: "Plan", sub: "Understand scope" },
-  { n: 2, icon: "search", name: "Investigate", sub: "Collect & analyze" },
-  { n: 3, icon: "check", name: "Approve", sub: "Review & confirm" },
+  { n: 1, icon: "clipboard", name: "Plan", sub: "Scope + prior incidents" },
+  { n: 2, icon: "search", name: "Investigate", sub: "Logs · traces · k8s · deploys" },
+  { n: 3, icon: "check", name: "Approve", sub: "Risk-tiered review" },
   { n: 4, icon: "insight", name: "Diagnose", sub: "Find root cause" },
-  { n: 5, icon: "refresh", name: "Reflect", sub: "Summarize & learn" },
+  { n: 5, icon: "refresh", name: "Reflect", sub: "Close the gaps" },
+  { n: 6, icon: "download", name: "Report", sub: "RCA + postmortem" },
 ];
 
 const SUGGESTIONS = [
   "Why is the checkout API throwing 500 errors?",
-  "Is the checkout service error rate going up or down?",
-  "Which services are emitting logs right now?",
-  "Show me the top error logs in the last 15 minutes",
+  "Are any checkout-svc pods crashing in Kubernetes?",
+  "What recent deploy most likely caused the checkout failures?",
+  "Have we seen this checkout incident before?",
 ];
 
 const FEATURES = [
-  { icon: "sparkles", title: "Context aware", sub: "Understands your stack" },
-  { icon: "check", title: "Source linked", sub: "Logs, code & metrics" },
-  { icon: "lock", title: "Safe by design", sub: "Approval before writes" },
-  { icon: "cpu", title: "Extensible", sub: "MCP-powered tools" },
+  { icon: "insight", title: "Root-cause reports", sub: "Ranked hypotheses + postmortem" },
+  { icon: "server", title: "9 tool servers", sub: "Logs · traces · k8s · deploys" },
+  { icon: "lock", title: "Safe by design", sub: "Risk-tiered approval + guardrails" },
+  { icon: "cpu", title: "Multi-tenant ready", sub: "Orgs · RBAC · usage quotas" },
 ];
 
 function greeting(): string {
@@ -199,9 +200,9 @@ export function Console({ onHome }: { onHome: () => void }) {
                   <p className="welcome__greet">{greeting()}, Alex!</p>
                   <h1 className="welcome__title">Investigate a production incident</h1>
                   <p className="welcome__sub">
-                    Ask a question and DevOps Copilot will pull logs &amp; metrics, read the code,
-                    find the root cause, and propose a fix — pausing for your approval before any
-                    write action.
+                    Ask a question and DevOps Copilot will pull logs, metrics, traces, Kubernetes
+                    and recent deploys, read the code, correlate the change, and deliver a
+                    structured root-cause report — pausing for your approval before any write.
                   </p>
                 </div>
                 <IncidentSignal />
