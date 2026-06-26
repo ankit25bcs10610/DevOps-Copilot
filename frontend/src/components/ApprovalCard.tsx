@@ -23,6 +23,17 @@ export function ApprovalCard({ request, disabled, onDecision }: Props) {
         <span className="approval__msg">{request.message}</span>
       </div>
 
+      {typeof request.evidence_count === "number" && (
+        <div className={`approval__evidence approval__evidence--${request.confidence ?? "low"}`}>
+          <Icon name="search" size={13} />
+          <span>
+            Investigated with <strong>{request.evidence_count}</strong> tool result
+            {request.evidence_count === 1 ? "" : "s"} before proposing this
+            {request.confidence === "low" && " — thin evidence, review carefully"}
+          </span>
+        </div>
+      )}
+
       {request.actions.map((action, i) => (
         <div key={i} className="approval__action">
           <div className="approval__tool">

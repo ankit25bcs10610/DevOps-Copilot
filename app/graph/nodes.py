@@ -211,11 +211,17 @@ def approval_node(state: AgentState) -> dict:
     highest = "high" if any(a["risk"] == "high" for a in actions) else (
         "medium" if any(a["risk"] == "medium" for a in actions) else "low"
     )
+    # How much did the agent investigate before proposing this write? Surface it so
+    # the reviewer can weigh a write proposed on thin evidence more carefully.
+    evidence_count = sum(1 for m in state["messages"] if isinstance(m, ToolMessage))
+    confidence = "low" if evidence_count < 2 else "medium" if evidence_count < 4 else "high"
     decision = interrupt(
         {
             "type": "approval_request",
             "message": "The agent wants to run an action that needs your approval.",
             "risk": highest,
+            "evidence_count": evidence_count,
+            "confidence": confidence,
             "actions": actions,
         }
     )

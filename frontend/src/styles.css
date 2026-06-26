@@ -942,6 +942,23 @@ input {
   font-size: 13px;
   color: var(--text);
 }
+.approval__evidence {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 12px;
+  padding: 8px 11px;
+  font-size: 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  background: var(--panel);
+}
+.approval__evidence--low {
+  border-color: rgba(245, 181, 68, 0.4);
+  background: rgba(245, 181, 68, 0.08);
+  color: var(--text);
+}
 .approval__risk {
   font-size: 9.5px;
   font-weight: 700;

@@ -19,6 +19,8 @@ export interface ApprovalRequest {
   type: string;
   message: string;
   risk?: RiskTier;
+  evidence_count?: number;
+  confidence?: Confidence;
   actions: ProposedAction[];
 }
 

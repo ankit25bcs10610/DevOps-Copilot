@@ -61,6 +61,13 @@ def test_audit_verify_endpoint(client):
     assert "valid" in r.json()
 
 
+def test_webhook_delivery_idempotency():
+    api._SEEN_DELIVERIES.clear()
+    assert api._claim_delivery(b"delivery-1") is True
+    assert api._claim_delivery(b"delivery-1") is False  # redelivery deduped
+    assert api._claim_delivery(b"delivery-2") is True
+
+
 def test_request_id_header_on_every_response(client):
     assert client.get("/healthz").headers.get("x-request-id")
 

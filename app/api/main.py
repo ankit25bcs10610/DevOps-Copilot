@@ -14,6 +14,7 @@ graph state to SQLite/Postgres, so sessions are reconstructable).
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import hmac
 import json
 import logging
@@ -1130,6 +1131,10 @@ async def _run_triggered_investigation(incident: dict) -> None:
             result = await session.ask(seed)
             if result.status == "awaiting_approval":
                 _AWAITING.add(thread_id)
+            elif result.status == "completed":
+                # Meter the triggered path the same as the interactive one (no-op
+                # without a tenant); idem-keyed by the incident so a re-run can't double-bill.
+                await metering.record_investigation(result.tokens_used, idem=thread_id)
         await _post_to_slack(thread_id, title, result)
     except Exception:  # noqa: BLE001 — best-effort background trigger
         log.exception("triggered investigation failed (incident=%s)", incident.get("id"))
@@ -1150,6 +1155,26 @@ async def _resume_triggered(thread_id: str, approved: bool) -> None:
         await _post_to_slack(thread_id, thread_id, result)
     except Exception:  # noqa: BLE001
         log.exception("slack-triggered resume failed (thread=%s)", thread_id)
+
+
+# Webhook delivery idempotency: dedup a provider redelivery (identical signed body)
+# within a TTL window so an incident isn't investigated — or resumed — twice.
+_SEEN_DELIVERIES: dict[str, float] = {}
+_DELIVERY_TTL = 600  # seconds
+
+
+def _claim_delivery(raw: bytes) -> bool:
+    """True if this webhook body is new (claims it); False if a duplicate within TTL."""
+    now = time.time()
+    digest = hashlib.sha256(raw).hexdigest()
+    if len(_SEEN_DELIVERIES) > 5000:  # bound memory: drop expired entries
+        for k in [k for k, t in _SEEN_DELIVERIES.items() if now - t > _DELIVERY_TTL]:
+            del _SEEN_DELIVERIES[k]
+    prev = _SEEN_DELIVERIES.get(digest)
+    if prev is not None and now - prev < _DELIVERY_TTL:
+        return False
+    _SEEN_DELIVERIES[digest] = now
+    return True
 
 
 @app.post("/webhooks/pagerduty")
@@ -1174,6 +1199,8 @@ async def pagerduty_webhook(request: Request):
     if not active_api_key():
         log.warning("PagerDuty incident %s received but no LLM key configured", incident["id"])
         return {"status": "accepted_no_llm", "incident": incident["id"]}
+    if not _claim_delivery(raw):
+        return {"status": "duplicate", "incident": incident["id"]}  # redelivery — already running
     asyncio.create_task(_run_triggered_investigation(incident))
     return {"status": "accepted", "incident": incident["id"]}
 
@@ -1199,6 +1226,8 @@ async def slack_interactions(request: Request):
         return {"text": "No action."}
     thread_id = actions[0].get("value") or ""
     approved = actions[0].get("action_id") == "approve"
+    if not _claim_delivery(raw):
+        return {"text": "Already processed."}  # duplicate Slack delivery
     if active_api_key() and thread_id:
         asyncio.create_task(_resume_triggered(thread_id, approved))
     return {"text": f"{'Approved' if approved else 'Rejected'} — continuing the investigation."}
