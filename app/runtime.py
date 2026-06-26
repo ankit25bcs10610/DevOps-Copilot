@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from app import tenant_context
 from app.config import ROOT, get_settings
 
 # Every provider the agent can target. Keep in sync with app/llm.py defaults,
@@ -40,7 +41,13 @@ def _resolve_path(p: str) -> Path:
 
 
 # ---- model / provider ----
+# Each accessor is tenant-aware: when a TenantConfig is set on the request
+# contextvar (multi-tenant), it reads from that tenant; otherwise it falls back
+# to the process-global overrides + .env exactly as the single-tenant demo does.
 def provider() -> str:
+    t = tenant_context.get_tenant()
+    if t is not None:
+        return (t.provider or get_settings().copilot_provider).lower()
     return (_ov["provider"] or get_settings().copilot_provider).lower()
 
 
@@ -57,8 +64,12 @@ def _settings_key(p: str) -> str:
 
 
 def provider_key(p: str | None = None) -> str:
-    """Resolve the API key for a provider: UI override first, then .env."""
+    """Resolve the API key for a provider. Tenant key when multi-tenant (never
+    the host's .env key — isolation); else UI override then .env."""
     p = p or provider()
+    t = tenant_context.get_tenant()
+    if t is not None:
+        return t.provider_keys.get(p, "")
     return _keys.get(p, "") or _settings_key(p)
 
 
@@ -75,10 +86,16 @@ def model_override() -> str:
     # UI override (_ov) wins; otherwise fall back to the .env COPILOT_MODEL,
     # matching every other resolver here (the empty default lets llm.py drop
     # to the provider's built-in default).
+    t = tenant_context.get_tenant()
+    if t is not None:
+        return t.model or get_settings().copilot_model
     return _ov["model"] or get_settings().copilot_model
 
 
 def fast_model_override() -> str:
+    t = tenant_context.get_tenant()
+    if t is not None:
+        return t.fast_model or get_settings().copilot_fast_model
     return _ov["fast_model"] or get_settings().copilot_fast_model
 
 
@@ -105,10 +122,16 @@ def clear_github() -> None:
 
 
 def github_token() -> str:
+    t = tenant_context.get_tenant()
+    if t is not None:
+        return t.github_token
     return _ov["github_token"] or get_settings().github_token
 
 
 def github_repo() -> str:
+    t = tenant_context.get_tenant()
+    if t is not None:
+        return t.github_repo
     return _ov["github_repo"] or get_settings().github_repo
 
 
@@ -118,10 +141,16 @@ def github_connected() -> bool:
 
 # ---- data sources ----
 def repo_path() -> Path:
+    t = tenant_context.get_tenant()
+    if t is not None:
+        return _resolve_path(t.repo_path) if t.repo_path else get_settings().repo_path
     return _resolve_path(_ov["repo_path"]) if _ov["repo_path"] else get_settings().repo_path
 
 
 def logs_path() -> Path:
+    t = tenant_context.get_tenant()
+    if t is not None:
+        return _resolve_path(t.logs_path) if t.logs_path else get_settings().logs_path
     return _resolve_path(_ov["logs_path"]) if _ov["logs_path"] else get_settings().logs_path
 
 

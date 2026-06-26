@@ -16,7 +16,7 @@ from langchain_core.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.tools import load_mcp_tools as _load_session_tools
 
-from app import policy, runtime
+from app import policy, runtime, tenant_context
 from app.config import get_settings
 
 _SERVERS = (
@@ -24,12 +24,22 @@ _SERVERS = (
 )
 
 
+def _isecret(name: str, fallback: str) -> str:
+    """Resolve an integration secret: the request's tenant when multi-tenant
+    (their decrypted creds, never the host's), else the .env fallback."""
+    t = tenant_context.get_tenant()
+    if t is not None:
+        return t.integration_secrets.get(name, "")
+    return fallback
+
+
 def _server_config() -> dict:
     """Build the MultiServerMCPClient config.
 
     Each server is launched as a subprocess speaking MCP over stdio. We pass the
     current Python interpreter and forward the relevant paths via env so the
-    servers read the same data the app is configured with.
+    servers read the same data the app is configured with. Integration secrets
+    come from the resolved tenant when multi-tenant, else from .env.
     """
     py = sys.executable
     s = get_settings()
@@ -41,9 +51,9 @@ def _server_config() -> dict:
             # LOGS_DATA_PATH backs offline-demo mode; DD_* enable the live API.
             "env": {
                 "LOGS_DATA_PATH": str(runtime.logs_path()),
-                "DD_API_KEY": s.dd_api_key,
-                "DD_APP_KEY": s.dd_app_key,
-                "DD_SITE": s.dd_site,
+                "DD_API_KEY": _isecret("DD_API_KEY", s.dd_api_key),
+                "DD_APP_KEY": _isecret("DD_APP_KEY", s.dd_app_key),
+                "DD_SITE": _isecret("DD_SITE", s.dd_site),
             },
         },
         "repo": {
@@ -68,8 +78,8 @@ def _server_config() -> dict:
             "args": ["-m", "app.mcp.servers.pagerduty.server"],
             "transport": "stdio",
             "env": {  # blank token = offline fixtures
-                "PAGERDUTY_API_TOKEN": s.pagerduty_api_token,
-                "PAGERDUTY_FROM_EMAIL": s.pagerduty_from_email,
+                "PAGERDUTY_API_TOKEN": _isecret("PAGERDUTY_API_TOKEN", s.pagerduty_api_token),
+                "PAGERDUTY_FROM_EMAIL": _isecret("PAGERDUTY_FROM_EMAIL", s.pagerduty_from_email),
             },
         },
         "kubernetes": {
@@ -77,7 +87,10 @@ def _server_config() -> dict:
             "args": ["-m", "app.mcp.servers.kubernetes.server"],
             "transport": "stdio",
             # KUBE_CONFIG_PATH enables live cluster mode; blank = offline fixtures.
-            "env": {"KUBE_CONFIG_PATH": s.kube_config_path, "KUBE_NAMESPACE": s.kube_namespace},
+            "env": {
+                "KUBE_CONFIG_PATH": _isecret("KUBE_CONFIG_PATH", s.kube_config_path),
+                "KUBE_NAMESPACE": _isecret("KUBE_NAMESPACE", s.kube_namespace),
+            },
         },
         "sentry": {
             "command": py,
@@ -85,9 +98,9 @@ def _server_config() -> dict:
             "transport": "stdio",
             # SENTRY_API_TOKEN enables live mode; blank = offline fixtures.
             "env": {
-                "SENTRY_API_TOKEN": s.sentry_api_token,
-                "SENTRY_ORG": s.sentry_org,
-                "SENTRY_PROJECT": s.sentry_project,
+                "SENTRY_API_TOKEN": _isecret("SENTRY_API_TOKEN", s.sentry_api_token),
+                "SENTRY_ORG": _isecret("SENTRY_ORG", s.sentry_org),
+                "SENTRY_PROJECT": _isecret("SENTRY_PROJECT", s.sentry_project),
             },
         },
         "memory": {
@@ -102,7 +115,7 @@ def _server_config() -> dict:
             "args": ["-m", "app.mcp.servers.traces.server"],
             "transport": "stdio",
             # TRACES_API_URL enables live (Jaeger-compatible) mode; blank = fixtures.
-            "env": {"TRACES_API_URL": s.traces_api_url},
+            "env": {"TRACES_API_URL": _isecret("TRACES_API_URL", s.traces_api_url)},
         },
     }
 
