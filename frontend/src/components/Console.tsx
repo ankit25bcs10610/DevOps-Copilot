@@ -28,9 +28,24 @@ const SUGGESTIONS = [
 
 const FEATURES = [
   { icon: "insight", title: "Root-cause reports", sub: "Ranked hypotheses + postmortem" },
-  { icon: "server", title: "9 tool servers", sub: "Logs · traces · k8s · deploys" },
-  { icon: "lock", title: "Safe by design", sub: "Risk-tiered approval + guardrails" },
-  { icon: "cpu", title: "Multi-tenant ready", sub: "Orgs · RBAC · usage quotas" },
+  { icon: "server", title: "9 MCP tool servers", sub: "Logs · traces · k8s · sentry · deploys" },
+  { icon: "lock", title: "Risk-tiered approval", sub: "Human-in-the-loop before writes" },
+  { icon: "alert", title: "Injection + PII guardrails", sub: "Untrusted telemetry scrubbed" },
+  { icon: "cpu", title: "Token budget", sub: "Per-investigation cost kill-switch" },
+  { icon: "branch", title: "Multi-tenant + RBAC", sub: "Orgs · roles · scoped API keys" },
+  { icon: "database", title: "Usage metering & billing", sub: "Plan quotas · Stripe sync" },
+  { icon: "check", title: "Tamper-evident audit", sub: "Hash-chained, verifiable trail" },
+  { icon: "tool", title: "SSO login", sub: "Supabase / OIDC JWT" },
+  { icon: "refresh", title: "Deterministic evals", sub: "Record/replay golden gate" },
+  { icon: "send", title: "Triggered → Slack", sub: "PagerDuty auto-investigate + approve" },
+  { icon: "sparkles", title: "Datadog APM + LLMObs", sub: "Trace the agent itself" },
+];
+
+const STATS = [
+  { icon: "server", value: "9", label: "MCP tool servers" },
+  { icon: "cpu", value: "47", label: "agent tools" },
+  { icon: "sparkles", value: "5", label: "LLM providers" },
+  { icon: "check", value: "188", label: "tests passing" },
 ];
 
 function greeting(): string {
@@ -208,6 +223,26 @@ export function Console({ onHome }: { onHome: () => void }) {
                 <IncidentSignal />
               </div>
 
+              <div className="trust-bar">
+                <span className="trust-pill"><Icon name="lock" size={13} /> Human-in-the-loop approval</span>
+                <span className="trust-pill"><Icon name="branch" size={13} /> Multi-tenant + RBAC</span>
+                <span className="trust-pill"><Icon name="check" size={13} /> Tamper-evident audit</span>
+                <span className="trust-pill"><Icon name="server" size={13} /> Self-hostable</span>
+              </div>
+
+              <div className="stat-strip">
+                {STATS.map((s) => (
+                  <div key={s.label} className="stat">
+                    <span className="stat__icon">
+                      <Icon name={s.icon} size={16} />
+                    </span>
+                    <span className="stat__num">{s.value}</span>
+                    <span className="stat__label">{s.label}</span>
+                  </div>
+                ))}
+              </div>
+
+              <h2 className="feature-head">How it works</h2>
               <div className="pipe-card">
                 {PIPELINE.map((p, i) => (
                   <div key={p.name} className="pipe-step">
@@ -222,6 +257,21 @@ export function Console({ onHome }: { onHome: () => void }) {
                       </span>
                       <span className="pipe-step__sub">{p.sub}</span>
                     </div>
+                  </div>
+                ))}
+              </div>
+
+              <h2 className="feature-head">Built-in capabilities</h2>
+              <div className="feature-row">
+                {FEATURES.map((f) => (
+                  <div key={f.title} className="feature">
+                    <span className="feature__icon">
+                      <Icon name={f.icon} size={16} />
+                    </span>
+                    <span className="feature__txt">
+                      <strong>{f.title}</strong>
+                      <span>{f.sub}</span>
+                    </span>
                   </div>
                 ))}
               </div>
@@ -243,20 +293,6 @@ export function Console({ onHome }: { onHome: () => void }) {
               </div>
 
               <Composer disabled={disabled} onSend={send} busy={busy} onStop={stop} />
-
-              <div className="feature-row">
-                {FEATURES.map((f) => (
-                  <div key={f.title} className="feature">
-                    <span className="feature__icon">
-                      <Icon name={f.icon} size={16} />
-                    </span>
-                    <span className="feature__txt">
-                      <strong>{f.title}</strong>
-                      <span>{f.sub}</span>
-                    </span>
-                  </div>
-                ))}
-              </div>
             </div>
           ) : (
             <>

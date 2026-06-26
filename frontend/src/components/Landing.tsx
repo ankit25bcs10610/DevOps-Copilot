@@ -8,10 +8,26 @@ import { Icon } from "./Icon";
 
 const PIPELINE = [
   { icon: "clipboard", name: "Plan", desc: "Decompose the incident into an investigation plan." },
-  { icon: "search", name: "Investigate", desc: "Pull logs & metrics, read code, inspect git history." },
+  { icon: "search", name: "Investigate", desc: "Pull logs, metrics, traces, k8s & recent deploys." },
   { icon: "pause", name: "Approve", desc: "Human-in-the-loop gate before any write action." },
   { icon: "insight", name: "Diagnose", desc: "Pinpoint the root cause and propose the fix." },
   { icon: "refresh", name: "Reflect", desc: "Verify completeness, loop or finish." },
+  { icon: "download", name: "Report", desc: "Deliver a structured RCA + postmortem." },
+];
+
+const FEATURES = [
+  { icon: "insight", title: "Root-cause reports", sub: "Ranked hypotheses + postmortem" },
+  { icon: "server", title: "9 MCP tool servers", sub: "Logs · traces · k8s · sentry · deploys" },
+  { icon: "lock", title: "Risk-tiered approval", sub: "Human-in-the-loop before writes" },
+  { icon: "alert", title: "Injection + PII guardrails", sub: "Untrusted telemetry scrubbed" },
+  { icon: "cpu", title: "Token budget", sub: "Per-investigation cost kill-switch" },
+  { icon: "branch", title: "Multi-tenant + RBAC", sub: "Orgs · roles · scoped API keys" },
+  { icon: "database", title: "Usage metering & billing", sub: "Plan quotas · Stripe sync" },
+  { icon: "check", title: "Tamper-evident audit", sub: "Hash-chained, verifiable trail" },
+  { icon: "tool", title: "SSO login", sub: "Supabase / OIDC JWT" },
+  { icon: "refresh", title: "Deterministic evals", sub: "Record/replay golden gate" },
+  { icon: "send", title: "Triggered → Slack", sub: "PagerDuty auto-investigate + approve" },
+  { icon: "sparkles", title: "Datadog APM + LLMObs", sub: "Trace the agent itself" },
 ];
 
 function Sparkline({ data, color }: { data: number[]; color: string }) {
@@ -131,6 +147,7 @@ export function Landing({ onLaunch }: { onLaunch: () => void }) {
         </div>
         <div className="lnav__links">
           <a href="#features">Platform</a>
+          <a href="#capabilities">Capabilities</a>
           <a href="#how">How it works</a>
           <a href="#stack">Stack</a>
         </div>
@@ -182,10 +199,11 @@ export function Landing({ onLaunch }: { onLaunch: () => void }) {
                   <i className="on" />
                   <i className="on" />
                   <i className="on" />
+                  <i className="on" />
                   <i className="live" />
                 </span>
               </span>
-              <strong className="hmetric__val">5-stage</strong>
+              <strong className="hmetric__val">6-stage</strong>
               <span className="hmetric__label">agent pipeline</span>
             </div>
             <div className="hmetric">
@@ -200,6 +218,21 @@ export function Landing({ onLaunch }: { onLaunch: () => void }) {
           </div>
         </div>
         <div className="hero__hint">scroll to explore</div>
+      </section>
+
+      {/* ---- Stats band ---- */}
+      <section className="lstats" aria-label="Platform at a glance">
+        {[
+          { value: "9", label: "MCP tool servers" },
+          { value: "47", label: "agent tools" },
+          { value: "5", label: "LLM providers" },
+          { value: "188", label: "tests passing" },
+        ].map((s) => (
+          <div key={s.label} className="lstat">
+            <span className="lstat__num grad-text">{s.value}</span>
+            <span className="lstat__label">{s.label}</span>
+          </div>
+        ))}
       </section>
 
       {/* ---- Bento dashboard ---- */}
@@ -392,6 +425,31 @@ export function Landing({ onLaunch }: { onLaunch: () => void }) {
         </div>
       </section>
 
+      {/* ---- Capabilities ---- */}
+      <section id="capabilities" className="caps">
+        <div className="section-head">
+          <span className="section-eyebrow">Enterprise-ready</span>
+          <h2>Everything you need to run it in production</h2>
+          <p className="section-sub">
+            From single-tenant demo to multi-tenant SaaS — approval, guardrails, audit, metering,
+            SSO and observability are built in, not bolted on.
+          </p>
+        </div>
+        <div className="cap-grid">
+          {FEATURES.map((f) => (
+            <div key={f.title} className="tech cap">
+              <span className="tech__icon">
+                <Icon name={f.icon} size={18} />
+              </span>
+              <span className="tech__txt">
+                <strong>{f.title}</strong>
+                <span>{f.sub}</span>
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* ---- Stack ---- */}
       <section id="stack" className="stack">
         <div className="section-head">
@@ -426,7 +484,12 @@ export function Landing({ onLaunch }: { onLaunch: () => void }) {
       </section>
 
       <footer className="lfoot">
-        <span>DevOps Copilot</span>
+        <span>
+          DevOps Copilot · built by{" "}
+          <a href="https://github.com/ankit25bcs10610" target="_blank" rel="noreferrer">
+            Ankit Pandey
+          </a>
+        </span>
         <span>AI Incident Command Center · LangGraph · MCP · {provider}</span>
       </footer>
     </div>

@@ -118,6 +118,12 @@ Index: **[docs/README.md](docs/README.md)**.
 
 ---
 
+## Author
+
+**Ankit Pandey** — creator & maintainer · [@ankit25bcs10610](https://github.com/ankit25bcs10610)
+
+Contributions welcome — open an issue or PR.
+
 <div align="center">
 
 [MIT](LICENSE) — built as a portfolio / learning project.

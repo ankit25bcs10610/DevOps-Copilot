@@ -1318,10 +1318,73 @@ input {
   color: var(--text-faint);
 }
 
+/* trust bar — commercial credibility pills under the hero */
+.trust-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.trust-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-dim);
+  background: var(--panel);
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  padding: 6px 12px;
+}
+.trust-pill svg {
+  color: var(--accent);
+}
+
+/* headline stat strip */
+.stat-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+.stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  position: relative;
+  background: var(--panel);
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  padding: 14px 16px;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.stat:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+.stat__icon {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  color: var(--accent);
+  opacity: 0.55;
+}
+.stat__num {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.05;
+  color: var(--text);
+  letter-spacing: -0.02em;
+}
+.stat__label {
+  font-size: 12.5px;
+  color: var(--text-faint);
+}
+
 /* pipeline stepper */
 .pipe-card {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   background: var(--panel);
   border: 1px solid var(--border-soft);
   border-radius: 14px;
@@ -1432,6 +1495,12 @@ input {
 }
 
 /* feature row */
+.feature-head {
+  margin: 4px 0 2px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
 .feature-row {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -1527,12 +1596,21 @@ input {
   .feature-row {
     grid-template-columns: repeat(2, 1fr);
   }
+  .stat-strip {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  /* 6 steps get cramped on tablets — wrap into two rows of three. */
   .pipe-card {
-    grid-template-columns: 1fr;
-    gap: 12px;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px 12px;
   }
   .pipe-step__line {
     display: none;
+  }
+}
+@media (max-width: 560px) {
+  .pipe-card {
+    grid-template-columns: 1fr;
   }
 }
 @media (max-width: 720px) {
@@ -1624,19 +1702,27 @@ input {
 
 /* Staggered reveal of the welcome blocks for a calmer first impression. */
 .welcome,
+.trust-bar,
+.stat-strip,
 .pipe-card,
 .suggest-card,
 .feature-row {
   animation: section-in 0.45s ease both;
 }
-.pipe-card {
+.trust-bar {
+  animation-delay: 0.03s;
+}
+.stat-strip {
   animation-delay: 0.06s;
 }
-.suggest-card {
-  animation-delay: 0.12s;
+.pipe-card {
+  animation-delay: 0.09s;
 }
 .feature-row {
-  animation-delay: 0.18s;
+  animation-delay: 0.12s;
+}
+.suggest-card {
+  animation-delay: 0.15s;
 }
 @keyframes section-in {
   from {
