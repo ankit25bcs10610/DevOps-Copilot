@@ -3,6 +3,8 @@
 import json
 import logging
 
+import pytest
+
 from app import observability
 
 
@@ -18,7 +20,8 @@ def test_setup_datadog_apm_is_noop_when_disabled(monkeypatch):
 
 
 def test_llmobs_import_path_is_valid():
-    # The LLMObs entrypoint the hook uses must exist in the installed ddtrace.
+    # ddtrace is the optional `apm` extra (not installed in base CI) — skip if absent.
+    pytest.importorskip("ddtrace.llmobs")
     from ddtrace.llmobs import LLMObs
 
     assert hasattr(LLMObs, "enable")
