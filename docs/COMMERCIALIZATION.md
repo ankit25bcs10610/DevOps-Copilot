@@ -41,6 +41,8 @@ request ─► require_auth ─► resolve dcp_ API key (TenantStore)
 | **Usage metering + plan quotas** (free/team/enterprise, 402 hard-cap, `/usage`) | `app/metering.py` |
 | **Admin API** (org, members, API keys, integrations, plan) | `/admin/*` |
 | **CLI org provisioning** | `python -m app.cli provision-org` |
+| **Supabase / OIDC SSO login** | `SUPABASE_JWKS_URL` → JWT (Bearer) auth mapped to org/role |
+| **Stripe metered-billing sync** | `app/billing.py` over the idempotent ledger |
 | **PII/secret redaction** of telemetry before the LLM/checkpoint | `app/redaction.py` |
 | **Tamper-evident audit** (hash-chained, `/audit/verify`) | `app/audit.py` |
 
