@@ -158,6 +158,18 @@ class Settings(BaseSettings):
                 "COPILOT_API_TOKEN must be set when COPILOT_ENV=production "
                 "(refusing to start an unauthenticated, internet-exposed API)."
             )
+        # Multi-tenant stores per-tenant credentials encrypted at rest; in
+        # production refuse to boot with an ephemeral vault key (it would lose
+        # every tenant's secrets on restart and weaken isolation).
+        if (
+            self.copilot_multi_tenant
+            and self.copilot_env == "production"
+            and not self.copilot_secret_key.strip()
+        ):
+            raise ValueError(
+                "COPILOT_SECRET_KEY must be set when COPILOT_MULTI_TENANT=true in "
+                "production (per-tenant secrets are encrypted with it)."
+            )
         return self
 
     @property

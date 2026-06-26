@@ -17,7 +17,7 @@ import os
 import time
 from collections import deque
 
-from app import observability
+from app import observability, tenant_context
 
 _audit = logging.getLogger("devcopilot.audit")
 
@@ -33,6 +33,10 @@ def record(event: str, **fields) -> None:
         "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "event": event,
         "request_id": observability.request_id_var.get(),
+        # Tenant-stamped from day one ('-' when single-tenant) so every audit
+        # line is attributable to an org + actor in a multi-tenant deployment.
+        "org_id": tenant_context.tenant_id(),
+        "actor": tenant_context.get_actor(),
         **fields,
     }
     _audit.info("audit event=%s %s", event, json.dumps(fields, default=str, sort_keys=True))
