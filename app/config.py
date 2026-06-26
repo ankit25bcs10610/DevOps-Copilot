@@ -129,6 +129,10 @@ class Settings(BaseSettings):
     copilot_multi_tenant: bool = False
     # Tenant store DB: SQLite path (default) or a postgres://… URL in production.
     copilot_tenant_db: str = "./copilot_tenants.sqlite"
+    # Stripe metered billing (optional). With a key set, the usage ledger syncs to
+    # Stripe meter events; otherwise billing is local-ledger-only.
+    stripe_api_key: str = ""
+    stripe_meter_event: str = "investigation"
 
     # --- Agent behavior ---
     # Max agent (LLM) calls per turn — bounds the agent<->tools loop.

@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS integration_secrets (
 CREATE TABLE IF NOT EXISTS usage (
     id TEXT PRIMARY KEY, org_id TEXT NOT NULL, kind TEXT NOT NULL,
     amount INTEGER NOT NULL, ts TEXT NOT NULL, meta TEXT DEFAULT '{}',
-    event_key TEXT DEFAULT ''
+    event_key TEXT DEFAULT '', synced INTEGER DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_usage_org_kind_ts ON usage (org_id, kind, ts);
 -- Idempotency: a non-empty event_key is unique, so a retried/replayed turn is
@@ -364,6 +364,36 @@ class TenantStore:
                 (_id(), org_id, kind, int(amount), _now(),
                  json.dumps(meta or {}, default=str), event_key),
             )
+            await db.commit()
+
+    async def set_stripe_customer(self, org_id: str, customer_id: str) -> None:
+        import aiosqlite
+
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("UPDATE orgs SET stripe_customer_id=? WHERE id=?", (customer_id, org_id))
+            await db.commit()
+
+    async def unsynced_usage(self, kind: str = "investigation", limit: int = 500) -> list[dict]:
+        """Billable usage rows not yet synced to the billing provider (for Stripe sync)."""
+        import aiosqlite
+
+        async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute(
+                "SELECT id, org_id, kind, amount, ts, event_key FROM usage "
+                "WHERE synced=0 AND kind=? ORDER BY ts LIMIT ?",
+                (kind, limit),
+            ) as cur:
+                rows = await cur.fetchall()
+        return [{"id": r[0], "org_id": r[1], "kind": r[2], "amount": r[3],
+                 "ts": r[4], "event_key": r[5]} for r in rows]
+
+    async def mark_synced(self, ids: list[str]) -> None:
+        if not ids:
+            return
+        import aiosqlite
+
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.executemany("UPDATE usage SET synced=1 WHERE id=?", [(i,) for i in ids])
             await db.commit()
 
     async def usage_total(self, org_id: str, kind: str, since: str = "") -> int:
