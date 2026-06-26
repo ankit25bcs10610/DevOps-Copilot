@@ -36,7 +36,7 @@ function download(filename: string, text: string) {
 export function RcaReportCard({ report }: { report: RcaReport }) {
   const [open, setOpen] = useState(true);
   const sev = report.severity ?? "SEV3";
-  const conf: Confidence = report.confidence ?? "low";
+  const conf: Confidence = report.calibrated_confidence ?? report.confidence ?? "low";
 
   return (
     <section className="rca" aria-label="Root cause analysis report">
@@ -55,6 +55,22 @@ export function RcaReportCard({ report }: { report: RcaReport }) {
 
       {open && (
         <div className="rca__body">
+          {report.abstained && (
+            <div className="rca__abstain" role="note">
+              <Icon name="help" size={15} className="rca__abstain-icon" />
+              <div>
+                <strong>Insufficient evidence</strong> — provisional read, not a confirmed root cause.
+                {report.needs && report.needs.length > 0 && (
+                  <ul className="rca__needs">
+                    {report.needs.map((n, i) => (
+                      <li key={i}>{n}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          )}
+
           <p className="rca__summary">{report.summary}</p>
 
           {report.root_cause && (

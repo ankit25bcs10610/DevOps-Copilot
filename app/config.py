@@ -64,6 +64,9 @@ class Settings(BaseSettings):
     # Incident-memory corpus (prior RCAs/runbooks for similarity search). Blank =
     # the bundled demo corpus; point at your own JSON to search real postmortems.
     incident_corpus_path: str = ""
+    # Distributed-traces connector. With a Jaeger-compatible query URL it queries
+    # real traces; otherwise it serves offline OpenTelemetry-style span fixtures.
+    traces_api_url: str = ""
 
     # --- Trigger / delivery (webhooks → investigate → Slack) ---
     # PagerDuty webhook → auto-start an investigation (HMAC-verified).

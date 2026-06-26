@@ -338,6 +338,92 @@ def get_metric(service: str, metric: str) -> dict:
     }
 
 
+def _burn_rate(values: list[float], slo: float) -> dict:
+    """Multi-window error-budget burn-rate (Google SRE Workbook). Pure + testable.
+
+    burn_rate = observed_error_rate / error_budget, where error_budget = 1 - slo.
+    Short window = latest point; long window = series mean. A burn rate of 1 spends
+    the whole budget exactly over the SLO period; >1 spends it faster.
+    """
+    clean = [float(v) for v in values if v is not None]
+    budget = max(1e-9, 1.0 - slo)
+    if not clean:
+        return {"slo": slo, "error_budget": round(budget, 6), "verdict": "no data"}
+    short = clean[-1]
+    long = sum(clean) / len(clean)
+    burn_short = short / budget
+    burn_long = long / budget
+    # Standard multi-window thresholds: page on a fast burn confirmed over both windows.
+    if burn_short > 14.4 and burn_long > 14.4:
+        verdict = "page (fast burn — budget exhausts in hours)"
+    elif burn_short > 6 and burn_long > 6:
+        verdict = "page (moderate burn)"
+    elif burn_short > 1:
+        verdict = "ticket (slow burn — over budget)"
+    else:
+        verdict = "ok (within error budget)"
+    hours_to_exhaustion = round(budget / short, 1) if short > 0 else None
+    return {
+        "slo": slo, "error_budget": round(budget, 6),
+        "current_error_rate": round(short, 6), "mean_error_rate": round(long, 6),
+        "burn_rate_short": round(burn_short, 2), "burn_rate_long": round(burn_long, 2),
+        "hours_to_exhaustion": hours_to_exhaustion, "verdict": verdict,
+    }
+
+
+@mcp.tool()
+def compute_burn_rate(service: str, slo: float | str = 0.999, metric: str = "error_rate_5xx") -> dict:
+    """Convert an error-rate series into SLO error-budget burn rate — is this
+    page-worthy, and how long until the budget is exhausted? Grounds severity in
+    SRE math rather than a raw threshold.
+
+    Args:
+        service: the service to evaluate.
+        slo: target availability (e.g. 0.999 = 99.9%).
+        metric: the error-rate metric to read.
+    """
+    try:
+        slo = float(slo)
+    except (TypeError, ValueError):
+        slo = 0.999
+    data = get_metric(service, metric)
+    if data.get("error"):
+        return data
+    values = [p.get("value") for p in data.get("series", []) if isinstance(p, dict)]
+    result = _burn_rate([v for v in values if v is not None], slo)
+    result.update({"service": service, "metric": metric})
+    return result
+
+
+@mcp.tool()
+def onset_timeline() -> list[dict]:
+    """Reconstruct the onset ordering across all services' metrics: for each series
+    with a detected change-point, the timestamp it shifted, ordered earliest-first —
+    'who moved first' (a chain implies a cascade; near-simultaneous implies a shared
+    cause). Decisive for narrowing root cause. (Offline fixture mode.)"""
+    if not OFFLINE:
+        return [{"note": "onset_timeline runs over the offline metric fixtures; "
+                 "use detect_anomaly per service in live mode."}]
+    metrics_file = DATA_DIR / "metrics.json"
+    if not metrics_file.exists():
+        return [{"error": "no metrics data available"}]
+    data = json.loads(metrics_file.read_text())
+    events = []
+    for svc, metrics in data.items():
+        for metric, series in metrics.items():
+            values = [p.get("value") for p in series if isinstance(p, dict)]
+            det = _detect_anomaly([v for v in values if v is not None])
+            if det.get("anomaly"):
+                cp = det.get("change_point", {})
+                idx = cp.get("index", 0)
+                ts = series[idx].get("ts") if 0 <= idx < len(series) else None
+                events.append({"service": svc, "metric": metric, "onset_ts": ts,
+                               "from": cp.get("from"), "to": cp.get("to"),
+                               "direction": det.get("direction")})
+    events.sort(key=lambda e: str(e.get("onset_ts") or ""))
+    return events
+
+
 @mcp.tool()
 def detect_anomaly(service: str, metric: str) -> dict:
     """Detect anomalies / change-points in a service metric.

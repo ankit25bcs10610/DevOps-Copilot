@@ -51,7 +51,8 @@ MCP_CATALOG = [
         "label": "Datadog",
         "custom": True,
         "tools": [
-            "search_logs", "get_error_summary", "get_metric", "list_services", "detect_anomaly",
+            "search_logs", "get_error_summary", "get_metric", "list_services",
+            "detect_anomaly", "compute_burn_rate", "onset_timeline",
         ],
     },
     {
@@ -65,8 +66,8 @@ MCP_CATALOG = [
         "label": "GitHub",
         "custom": True,
         "tools": [
-            "list_recent_commits", "get_commit_diff", "list_workflow_runs",
-            "get_failed_job_logs", "create_pull_request",
+            "list_recent_commits", "get_commit_diff", "correlate_changes", "first_bad_deploy",
+            "list_workflow_runs", "get_failed_job_logs", "create_pull_request",
         ],
     },
     {
@@ -98,6 +99,15 @@ MCP_CATALOG = [
         "label": "Incident memory",
         "custom": True,
         "tools": ["search_incidents", "get_incident_record"],
+    },
+    {
+        "name": "traces",
+        "label": "Traces",
+        "custom": True,
+        "tools": [
+            "search_traces", "get_trace", "service_dependencies", "analyze_blast_radius",
+            "analyze_critical_path", "get_exemplars",
+        ],
     },
 ]
 

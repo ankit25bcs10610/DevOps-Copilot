@@ -387,6 +387,42 @@ def _parse_report(text: str, fallback_summary: str) -> dict:
     return _normalize_report(data, fallback_summary)
 
 
+def _calibrate_confidence(report: dict) -> dict:
+    """Deterministically calibrate confidence from evidence density and flag
+    INSUFFICIENT EVIDENCE, so a thin investigation can't emit a falsely confident
+    verdict (LLMs are positively biased). Pure + testable. Adds:
+      calibrated_confidence (high/medium/low), abstained (bool), needs (gaps).
+    The LLM's own per-hypothesis confidence is left intact alongside this."""
+    evidence_count = len(report.get("evidence") or [])
+    hyps = report.get("hypotheses") or []
+    validated = [h for h in hyps if h.get("verdict") == "validated"]
+    hyp_evidence = sum(len(h.get("evidence") or []) for h in hyps)
+    has_rc = bool(report.get("root_cause"))
+    total_evidence = evidence_count + hyp_evidence
+
+    if total_evidence >= 3 and validated and has_rc:
+        cal = "high"
+    elif total_evidence >= 2 and (validated or has_rc):
+        cal = "medium"
+    else:
+        cal = "low"
+    abstained = total_evidence < 2 or (not validated and not has_rc)
+
+    needs: list[str] = []
+    if abstained:
+        if not has_rc:
+            needs.append("Establish and state a single most-likely root cause.")
+        if not validated:
+            needs.append("Validate a hypothesis against telemetry (logs/metrics/traces).")
+        if total_evidence < 2:
+            needs.append("Gather more cited evidence (exact log lines, metric values, file:line, commits).")
+
+    report["calibrated_confidence"] = cal
+    report["abstained"] = abstained
+    report["needs"] = needs
+    return report
+
+
 def _render_postmortem(report: dict, request: str) -> str:
     """Render a blameless, copy-pasteable postmortem from the RCA object. Pure:
     deterministic Markdown, no extra LLM call. Roles/actions, never names."""
@@ -396,8 +432,16 @@ def _render_postmortem(report: dict, request: str) -> str:
         "# Incident Postmortem",
         "",
         f"**Severity:** {report.get('severity', 'SEV3')}  ·  "
-        f"**Confidence:** {report.get('confidence', 'low')}  ·  "
+        f"**Confidence:** {report.get('calibrated_confidence', report.get('confidence', 'low'))}  ·  "
         f"**Affected services:** {services}",
+    ]
+    if report.get("abstained"):
+        lines += [
+            "",
+            "> ⚠️ **Insufficient evidence** — this is a provisional read, not a confirmed "
+            "root cause. To raise confidence: " + "; ".join(report.get("needs") or []),
+        ]
+    lines += [
         "",
         "## Summary",
         report.get("summary", "").strip() or "—",
@@ -460,6 +504,7 @@ def make_report_node():
         except Exception:  # noqa: BLE001 — reporting must never break a finished run
             log.exception("report synthesis failed; using fallback report")
             report = _parse_report("", fallback_summary=final_answer)
+        report = _calibrate_confidence(report)
         report["postmortem"] = _render_postmortem(report, request)
         return {"report": report, "status": "done", "tokens_used": tokens}
 

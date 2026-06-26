@@ -44,6 +44,10 @@ export interface RcaReport {
   evidence: string[];
   recommended_actions: string[];
   postmortem: string; // rendered Markdown
+  // Deterministic calibration (set server-side by the report node).
+  calibrated_confidence?: Confidence;
+  abstained?: boolean;
+  needs?: string[];
 }
 
 export interface ChatResponse {

@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from app.graph.nodes import (
+    _calibrate_confidence,
     _coerce_str_list,
     _evidence_digest,
     _history_digest,
@@ -98,6 +99,28 @@ def test_coerce_str_list_handles_mixed_shapes():
     assert _coerce_str_list(None) == []
     assert _coerce_str_list([{"k": "v"}])  # dict items survive as JSON strings
     assert _coerce_str_list(["x"] * 50, limit=3) == ["x", "x", "x"]
+
+
+def test_calibrate_confidence_high_on_strong_report():
+    r = _parse_report(_GOOD_JSON, fallback_summary="fb")
+    r = _calibrate_confidence(r)
+    assert r["calibrated_confidence"] == "high"
+    assert r["abstained"] is False
+    assert r["needs"] == []
+
+
+def test_calibrate_confidence_abstains_on_thin_report():
+    r = _parse_report("the model rambled with no json", fallback_summary="something happened")
+    r = _calibrate_confidence(r)
+    assert r["calibrated_confidence"] == "low"
+    assert r["abstained"] is True
+    assert r["needs"]  # names what's missing
+
+
+def test_postmortem_flags_insufficient_evidence_when_abstained():
+    r = _calibrate_confidence(_parse_report("", fallback_summary="x"))
+    md = _render_postmortem(r, "why?")
+    assert "Insufficient evidence" in md
 
 
 def test_render_postmortem_includes_key_sections():

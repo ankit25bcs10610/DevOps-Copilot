@@ -19,7 +19,9 @@ from langchain_mcp_adapters.tools import load_mcp_tools as _load_session_tools
 from app import policy, runtime
 from app.config import get_settings
 
-_SERVERS = ("datadog", "repo", "github", "pagerduty", "kubernetes", "sentry", "memory")
+_SERVERS = (
+    "datadog", "repo", "github", "pagerduty", "kubernetes", "sentry", "memory", "traces",
+)
 
 
 def _server_config() -> dict:
@@ -94,6 +96,13 @@ def _server_config() -> dict:
             "transport": "stdio",
             # CORPUS_PATH overrides the bundled prior-incident corpus; blank = bundled.
             "env": {"CORPUS_PATH": s.incident_corpus_path},
+        },
+        "traces": {
+            "command": py,
+            "args": ["-m", "app.mcp.servers.traces.server"],
+            "transport": "stdio",
+            # TRACES_API_URL enables live (Jaeger-compatible) mode; blank = fixtures.
+            "env": {"TRACES_API_URL": s.traces_api_url},
         },
     }
 

@@ -8,8 +8,8 @@ Interfaces  ─────────────  CLI  +  FastAPI
                               │
 Orchestration  ───────────  LangGraph state machine  (+ LangChain glue)
                               │  MCP protocol (stdio)
-Tools  ───────────────────  7 MCP servers: datadog · pagerduty · kubernetes ·
-                            sentry · github · repo · incident-memory
+Tools  ───────────────────  8 MCP servers: datadog · pagerduty · kubernetes ·
+                            sentry · traces · github · repo · incident-memory
 ```
 
 ---
@@ -29,11 +29,12 @@ incident (a bad `checkout-svc` discount deploy).
 | `pagerduty` | alerting (live API / offline) | `list_incidents`, `get_incident`, `get_incident_alerts`, `add_incident_note` *(w)*, `acknowledge_incident` *(w)*, `resolve_incident` *(write)* |
 | `kubernetes` | orchestration (kubeconfig / offline) | `list_pods`, `describe_pod`, `get_events`, `get_deployment_status`, `rollout_history`, `scale_deployment`/`rollback_deployment`/`restart_deployment` *(write)* |
 | `sentry` | error tracking (live API / offline) | `list_issues`, `get_issue`, `get_latest_event` |
+| `traces` | distributed traces (Jaeger / offline) | `search_traces`, `get_trace`, `service_dependencies`, `analyze_blast_radius` |
 | `github` | repo host (real API / offline) | `list_recent_commits`, `get_commit_diff`, `correlate_changes`, `list_workflow_runs`, `get_failed_job_logs`, `create_pull_request` *(write)* |
 | `repo` | sandboxed FS + git | `list_dir`, `read_file`, `grep`, `git_log` |
 | `memory` | incident memory (BM25 over a corpus) | `search_incidents`, `get_incident_record` |
 
-`app/mcp/client.py` registers all seven with `MultiServerMCPClient` and converts
+`app/mcp/client.py` registers all eight with `MultiServerMCPClient` and converts
 their tools to LangChain tools via `langchain-mcp-adapters`. **Adding a server is
 one dict entry — zero agent changes.** That decoupling is the whole point of MCP.
 

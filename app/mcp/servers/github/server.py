@@ -216,6 +216,40 @@ def _rank_commits(signal: str, commits: list[dict]) -> list[dict]:
     return scored
 
 
+def _first_bad_deploy(commits: list[dict], onset_date: str) -> dict:
+    """Given commits (each with a 'date' YYYY-MM-DD) and an incident onset date,
+    return the most recent commit dated on/before onset (the suspect deploy) plus
+    the commits that landed after it. Pure + testable. Turns text-overlap guessing
+    into a time-anchored claim: the last change before the error began."""
+    onset_day = (onset_date or "")[:10]
+    dated = [c for c in commits if c.get("date")]
+    # Newest first; the first commit at/before onset is the last deploy before the incident.
+    dated.sort(key=lambda c: c["date"], reverse=True)
+    after = [c for c in dated if c["date"] > onset_day]
+    suspect = next((c for c in dated if c["date"] <= onset_day), None)
+    return {
+        "onset_date": onset_day,
+        "suspect": suspect,
+        "why": (
+            f"Commit {suspect['sha']} ({suspect['date']}) is the last change at or "
+            f"before the incident onset — the prime suspect." if suspect else
+            "No commit dated at/before the onset; the cause may predate the history window."
+        ),
+        "landed_after_onset": after,
+    }
+
+
+@mcp.tool()
+def first_bad_deploy(onset_timestamp: str, branch: str = "main") -> dict:
+    """Time-anchored deploy bisect: given when the incident began, identify the last
+    deploy before onset (the prime suspect) — a causal claim, not a keyword guess.
+    Pair with `correlate_changes` (content match) for a stronger verdict."""
+    commits = list_recent_commits(branch=branch, max_count=20)
+    if commits and isinstance(commits[0], dict) and commits[0].get("error"):
+        return {"error": commits[0]["error"]}
+    return _first_bad_deploy(commits, onset_timestamp)
+
+
 @mcp.tool()
 def correlate_changes(signal: str, branch: str = "main", max_results: int | str = 5) -> dict:
     """Rank recent commits by how strongly they relate to an incident signal — the

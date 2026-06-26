@@ -9,6 +9,7 @@ from app.mcp.servers.github import server as gh
 from app.mcp.servers.kubernetes import server as k8s
 from app.mcp.servers.pagerduty import server as pd
 from app.mcp.servers.sentry import server as sentry
+from app.mcp.servers.traces import server as traces
 
 
 # --- Datadog (offline helpers are env-independent) ----------------------- #
@@ -145,3 +146,84 @@ def test_detect_anomaly_handles_insufficient_data():
     res = dd._detect_anomaly([1.0])
     assert res["anomaly"] is False
     assert "insufficient" in res["verdict"]
+
+
+# --- Traces + blast radius (pure graph fns, env-independent) --------------- #
+def test_deps_from_traces_builds_service_graph():
+    edges = traces.deps_from_traces(traces._DEMO_TRACES)
+    assert ["api-gateway", "checkout-svc"] in edges
+    assert ["checkout-svc", "inventory-svc"] in edges
+
+
+def test_blast_radius_separates_cause_from_symptom():
+    edges = [["api-gateway", "checkout-svc"], ["checkout-svc", "inventory-svc"],
+             ["checkout-svc", "payment-svc"]]
+    br = traces.blast_radius(edges, "checkout-svc")
+    # api-gateway is affected (calls checkout, transitively upstream)
+    assert "api-gateway" in br["affected_upstream"]
+    # inventory/payment are downstream dependencies (candidate causes), not affected
+    assert set(br["downstream_dependencies"]) == {"inventory-svc", "payment-svc"}
+
+
+def test_traces_offline_error_trace_localizes_to_applydiscount():
+    if not traces.OFFLINE:
+        pytest.skip("TRACES_API_URL is set")
+    errs = traces.search_traces(error_only=True)
+    assert errs and errs[0]["status"] == "error"
+    tr = traces.get_trace(errs[0]["trace_id"])
+    bad = [sp for sp in tr["spans"] if sp.get("status") == "error" and "error" in sp]
+    assert bad and "applyDiscount" in bad[0]["error"]
+
+
+def test_analyze_blast_radius_offline_integration():
+    if not traces.OFFLINE:
+        pytest.skip("TRACES_API_URL is set")
+    res = traces.analyze_blast_radius("checkout-svc")
+    assert "api-gateway" in res["affected_upstream"]
+
+
+# --- Next-wave analysis tools (pure functions) ---------------------------- #
+def test_analyze_spans_attributes_self_time_and_finds_fault():
+    spans = traces._DEMO_TRACES[0]["spans"]
+    res = traces.analyze_spans(spans)
+    # checkout-svc 'checkout' span has the highest self-time (its children are fast)
+    assert res["bottlenecks"][0]["service"] == "checkout-svc"
+    # the FAULT is the deepest error span — applyDiscount — not the slow parent
+    assert res["fault_span"]["operation"] == "applyDiscount"
+    assert "applyDiscount" in res["fault_span"]["error"]
+
+
+def test_get_exemplars_window_join():
+    if not traces.OFFLINE:
+        pytest.skip("TRACES_API_URL is set")
+    hits = traces.get_exemplars("2026-06-23T10:00:00Z", "2026-06-23T10:10:00Z", error_only=True)
+    assert hits and hits[0]["status"] == "error"
+
+
+def test_burn_rate_pages_on_fast_burn():
+    res = dd._burn_rate([0.0, 0.02, 0.71], slo=0.999)
+    assert res["burn_rate_short"] > 14.4
+    assert "page" in res["verdict"]
+
+
+def test_burn_rate_ok_within_budget():
+    res = dd._burn_rate([0.0, 0.0, 0.0002], slo=0.999)
+    assert "ok" in res["verdict"]
+
+
+def test_onset_timeline_orders_changepoints():
+    if not dd.OFFLINE:
+        pytest.skip("DD keys set")
+    events = dd.onset_timeline()
+    assert any(e.get("service") == "checkout-svc" for e in events)
+
+
+def test_first_bad_deploy_picks_last_change_before_onset():
+    commits = [
+        {"sha": "abc1234", "date": "2026-06-23", "message": "Add discount"},
+        {"sha": "9f8e7d6", "date": "2026-06-22", "message": "Refactor"},
+        {"sha": "1122334", "date": "2026-06-21", "message": "Bump deps"},
+    ]
+    res = gh._first_bad_deploy(commits, "2026-06-23T10:01:15Z")
+    assert res["suspect"]["sha"] == "abc1234"
+    assert res["landed_after_onset"] == []

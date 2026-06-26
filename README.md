@@ -11,7 +11,7 @@
 ![LangGraph](https://img.shields.io/badge/LangGraph-stateful%20agent-1C3C3C)
 ![MCP](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-7C5CFF)
 
-**LangGraph 6-node cyclic graph** · **7 custom MCP servers / 34 tools** · **structured RCA + postmortem** · **5 LLM providers** · **PagerDuty → Slack trigger loop** · **risk-tiered approval · prompt-injection guardrails · token budget** · **ruff · mypy · ESLint · pytest · Vitest in CI** · **one Docker image (SPA + API)**
+**LangGraph 6-node cyclic graph** · **8 custom MCP servers / 43 tools** · **structured RCA + postmortem** · **5 LLM providers** · **PagerDuty → Slack trigger loop** · **risk-tiered approval · prompt-injection guardrails · token budget** · **ruff · mypy · ESLint · pytest · Vitest in CI** · **one Docker image (SPA + API)**
 
 </div>
 
@@ -43,7 +43,7 @@
 
 ## Overview
 
-DevOps Copilot turns a one-line question — *"Why is the checkout API throwing 500s?"* — into an evidence-backed root-cause analysis. A **LangGraph** state machine drives an LLM across **seven custom MCP (Model Context Protocol)** tool servers: it plans, checks whether the incident has happened before, gathers logs · metrics · traces · Kubernetes state · Sentry errors, reads the code and git history, correlates the failure to a recent change, diagnoses the bug, and proposes a pull request — **stopping for your approval before any write action.** Every finished investigation is compiled into a **structured RCA report** (ranked hypotheses with verdicts and cited evidence, severity, confidence) plus a downloadable **blameless postmortem**. Progress streams live to a React console over Server-Sent Events.
+DevOps Copilot turns a one-line question — *"Why is the checkout API throwing 500s?"* — into an evidence-backed root-cause analysis. A **LangGraph** state machine drives an LLM across **eight custom MCP (Model Context Protocol)** tool servers: it plans, checks whether the incident has happened before, gathers logs · metrics · traces · Kubernetes state · Sentry errors, reads the code and git history, correlates the failure to a recent change, diagnoses the bug, and proposes a pull request — **stopping for your approval before any write action.** Every finished investigation is compiled into a **structured RCA report** (ranked hypotheses with verdicts and cited evidence, severity, confidence) plus a downloadable **blameless postmortem**. Progress streams live to a React console over Server-Sent Events.
 
 It is a full-stack reference implementation of a modern agentic system, with the production concerns — auth, rate limiting, health probes, structured logging, graceful shutdown, a token-cost kill-switch, prompt-injection guardrails, a risk-tiered approval policy, an audit trail, tests, CI, and a single deployable Docker image — actually built, not hand-waved.
 
@@ -51,9 +51,9 @@ It is a full-stack reference implementation of a modern agentic system, with the
 
 | | |
 |---|---|
-| **Structured RCA + postmortem** | Every finished investigation is compiled into a typed RCA object — **ranked hypotheses** each marked *validated / invalidated / inconclusive* with **cited evidence**, plus severity, confidence, affected services, and recommended actions — rendered as an expandable card and a one-click **blameless postmortem** download. |
+| **Structured RCA + postmortem** | Every finished investigation is compiled into a typed RCA object — **ranked hypotheses** each marked *validated / invalidated / inconclusive* with **cited evidence**, plus severity, affected services, and recommended actions — with a **calibrated confidence** that abstains ("insufficient evidence") on thin investigations instead of bluffing. Rendered as an expandable card and a one-click **blameless postmortem** download. |
 | **Risk-tiered human approval** | A policy engine classifies every tool call **allow / notify / approve** by consequence, with a risk tier and a terraform-plan-style **impact preview** on the approval card. It's **argument-aware** (scaling a deployment to zero escalates to high-risk), and the gate is a resumable LangGraph `interrupt()` the routing can't bypass. See [Human-in-the-loop](#human-in-the-loop-by-design). |
-| **Seven custom MCP servers** | `datadog` (logs/metrics + anomaly detection), `pagerduty` (alerting + ack/note/resolve), `kubernetes` (pods/events/rollouts + scale/rollback), `sentry` (issues/stack-traces), `github` (commits, CI logs, change-correlation, PRs), a path-sandboxed `repo` server, and an `incident-memory` server (BM25 search over prior RCAs/runbooks) — **34 tools**, each with **live-API + offline-fixture** modes, all hand-built on FastMCP/stdio and discovered at runtime via `langchain-mcp-adapters`. |
+| **Eight custom MCP servers** | `datadog` (logs/metrics + anomaly detection), `pagerduty` (alerting + ack/note/resolve), `kubernetes` (pods/events/rollouts + scale/rollback), `sentry` (issues/stack-traces), `traces` (span search + **blast-radius** reasoning), `github` (commits, CI logs, change-correlation, PRs), a path-sandboxed `repo` server, and an `incident-memory` server (BM25 search over prior RCAs/runbooks) — **43 tools** including deterministic **analysis** tools (critical-path/self-time attribution, SLO burn-rate, onset ordering, deploy-bisect, anomaly→trace exemplars), each with **live-API + offline-fixture** modes, all hand-built on FastMCP/stdio and discovered at runtime via `langchain-mcp-adapters`. |
 | **Trust & safety built in** | Untrusted tool output is **provenance-boxed and scanned for prompt injection** before it reaches the model; a per-investigation **token budget** hard-stops runaway cost; an append-only **audit trail** (queryable via `/audit`) records approvals, model changes, injection hits, and feedback. |
 | **Triggered + delivered** | A signed **PagerDuty webhook** auto-starts an investigation; findings post to **Slack** with **Approve / Reject** buttons that resume the agent through the same approval gate — the agent shows up when you're paged. |
 | **Learning loop** | Thumbs up/down on any answer is captured as a labeled case (`/feedback`); thumbs-down seeds a regression eval. The eval harness scores tool use **and** the structured verdict. |
@@ -99,7 +99,10 @@ A React console with a live activity timeline, the human-in-the-loop approval ca
    │  ack/note/resolve W)  │                      │  get_failed_job_logs      │   34 tools)
    │ kubernetes (pods/roll-│ sentry (issues/      │  create_pull_request (W)  │
    │  outs + scale/rollbackW)│  stack-traces)     │  incident-memory (BM25)   │
+   │ traces (spans +       │                      │                           │
+   │  blast-radius)        │                      │                           │
    └──────────────────────┴──────────────────────┴───────────────────────────┘
+                          8 MCP servers · 43 tools
 ```
 
 > The agent never imports a server directly — it only sees the tools each MCP server advertises. Untrusted tool output is provenance-boxed and injection-scanned by a **guarded tool node** before re-entering the model's context. Full design notes in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
@@ -121,7 +124,7 @@ The FastAPI layer is built for more than one user at a time:
 | **3 · Approve** | If the agent wants a consequential action (open a PR, scale/rollback a deployment, resolve an incident), the graph **pauses** for human approval — with a risk tier and impact preview. |
 | **4 · Diagnose** | Pinpoint the root cause and propose the fix, grounded in tool output. |
 | **5 · Reflect** | Judge completeness (fast model). On *continue*, it hands the agent a **targeted gap note** so the next pass makes progress instead of repeating itself. |
-| **6 · Report** | Compile a structured RCA — ranked hypotheses with verdicts + cited evidence, severity, confidence, recommended actions — and render a blameless postmortem. |
+| **6 · Report** | Compile a structured RCA — ranked hypotheses with verdicts + cited evidence, severity, recommended actions — with a **calibrated confidence** that abstains on thin evidence, and render a blameless postmortem. |
 
 The loop is bounded twice over: at the iteration cap **or** the per-investigation token budget the agent is invoked **without tools** and forced to summarize, so a run can never end on an unexecuted tool call and runaway cost is hard-stopped. The graph's `recursion_limit` is derived from that cap, with a `GraphRecursionError` safety net.
 
@@ -252,8 +255,8 @@ Runs cases from `evals/testcases.yaml` against a live agent session and scores *
 app/
   api/        FastAPI surface — chat/approve (+SSE), config, model, sources, github, feedback, audit, webhooks, probes
   graph/      LangGraph: state, nodes (plan/agent/approval/tools/reflect/report), edges, builder, prompts
-  mcp/        client wiring + seven custom MCP servers (FastMCP/stdio): datadog, pagerduty,
-              kubernetes, sentry, github, repo, memory (incident search)
+  mcp/        client wiring + eight custom MCP servers (FastMCP/stdio): datadog, pagerduty,
+              kubernetes, sentry, traces (blast-radius), github, repo, memory (incident search)
   policy.py   risk-tiered action policy (allow / notify / approve + impact preview)
   guardrails.py     prompt-injection detection + provenance-boxing of tool output
   audit.py / feedback.py   queryable audit trail + thumbs up/down capture
