@@ -32,7 +32,7 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app import audit, feedback, metrics_source, observability, runtime, tenant_context
+from app import audit, feedback, metering, metrics_source, observability, runtime, tenant_context
 from app.config import ROOT, get_settings
 from app.integrations import pagerduty as pd_webhook
 from app.integrations import slack
@@ -390,6 +390,15 @@ def _scoped(thread_id: str) -> str:
     return f"{cfg.org_id}:{thread_id}" if cfg else thread_id
 
 
+async def quota_gate() -> None:
+    """Route dependency: block a new investigation when the tenant is over its
+    monthly plan quota (402). No-op in single-tenant mode."""
+    if await metering.over_quota():
+        raise HTTPException(
+            402, "Monthly investigation quota reached for your plan — upgrade to continue."
+        )
+
+
 app = FastAPI(
     title="DevOps Copilot",
     version="0.1.0",
@@ -702,7 +711,7 @@ async def reset_config() -> dict:
 
 
 @app.post("/chat", response_model=ChatResponse,
-          dependencies=[Depends(require_perm("run_investigation"))])
+          dependencies=[Depends(require_perm("run_investigation")), Depends(quota_gate)])
 async def chat(req: ChatRequest) -> ChatResponse:
     _check_message(req.message)
     tid = _scoped(req.thread_id)  # tenant-namespaced internal key (client sees its own id)
@@ -723,6 +732,8 @@ async def chat(req: ChatRequest) -> ChatResponse:
             result = await session.ask(req.message)
             if result.status == "awaiting_approval":
                 _AWAITING.add(tid)
+            elif result.status == "completed":
+                await metering.record_investigation(result.tokens_used)
     except HTTPException:
         raise  # 409/4xx should surface as real HTTP errors, not a 200 error body
     except Exception as exc:  # noqa: BLE001 — surface a clean error to the UI
@@ -758,6 +769,8 @@ async def approve(req: ApproveRequest) -> ChatResponse:
                 _AWAITING.add(tid)
             else:
                 _AWAITING.discard(tid)
+                if result.status == "completed":
+                    await metering.record_investigation(result.tokens_used)
         except Exception as exc:  # noqa: BLE001
             log.exception("approve/resume failed (thread=%s)", tid)
             return ChatResponse(
@@ -792,7 +805,8 @@ def _stream_payload(thread_id: str, ev: dict) -> dict:
     return out
 
 
-@app.post("/chat/stream", dependencies=[Depends(require_perm("run_investigation"))])
+@app.post("/chat/stream",
+          dependencies=[Depends(require_perm("run_investigation")), Depends(quota_gate)])
 async def chat_stream(req: ChatRequest):
     """Stream an investigation live (SSE): one event per graph step, then a
     terminal `approval` or `done` event."""
@@ -831,6 +845,7 @@ async def chat_stream(req: ChatRequest):
                             _AWAITING.add(tid)
                         elif t == "done":
                             _AWAITING.discard(tid)
+                            await metering.record_investigation(ev.get("tokens_used", 0))
                         yield {"data": json.dumps(_stream_payload(req.thread_id, ev))}
                 except Exception as exc:  # noqa: BLE001
                     log.exception("chat stream failed (thread=%s)", tid)
@@ -888,6 +903,7 @@ async def approve_stream(req: ApproveRequest):
                             _AWAITING.add(tid)
                         elif t == "done":
                             _AWAITING.discard(tid)
+                            await metering.record_investigation(ev.get("tokens_used", 0))
                         yield {"data": json.dumps(_stream_payload(req.thread_id, ev))}
                 except Exception as exc:  # noqa: BLE001
                     log.exception("approve stream failed (thread=%s)", tid)
@@ -911,6 +927,16 @@ async def approve_stream(req: ApproveRequest):
 async def metrics() -> dict:
     """Real metric series + error summary from the active logs/metrics source."""
     return metrics_source.read_all()
+
+
+@app.get("/usage")
+async def usage() -> dict:
+    """Current-period usage + quota for the tenant (cost/limit transparency).
+    In single-tenant mode there are no per-tenant quotas, so it reports that."""
+    summary = await metering.usage_summary()
+    if summary is None:
+        return {"multi_tenant": False, "detail": "usage quotas apply in multi-tenant mode only"}
+    return summary
 
 
 @app.post("/feedback")

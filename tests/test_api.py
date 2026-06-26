@@ -49,6 +49,12 @@ def test_metrics(client):
     assert "services" in r.json()
 
 
+def test_usage_single_tenant_reports_disabled(client):
+    r = client.get("/usage")
+    assert r.status_code == 200
+    assert r.json()["multi_tenant"] is False
+
+
 def test_request_id_header_on_every_response(client):
     assert client.get("/healthz").headers.get("x-request-id")
 

@@ -79,6 +79,28 @@ def test_rbac_admin_passes_rbac_then_hits_validation(mt):
     assert r.status_code == 400
 
 
+def test_usage_endpoint_reports_plan_and_quota(mt):
+    r = mt["client"].get("/usage", headers=_auth(mt["admin"]))
+    assert r.status_code == 200
+    body = r.json()
+    assert body["plan"] == "team"
+    assert body["investigations_quota"] == 1000
+    assert body["investigations_used"] == 0
+
+
+def test_over_quota_blocks_new_investigation_with_402(mt):
+    # org_b is on the free plan (50/month). Seed it to the limit, then /chat is gated.
+    async def seed():
+        store = tenant_auth.get_store()
+        for _ in range(50):
+            await store.record_usage(mt["org_b"], "investigation", 1)
+
+    asyncio.run(seed())
+    r = mt["client"].post("/chat", json={"thread_id": "t1", "message": "why 500s?"},
+                          headers=_auth(mt["b"]))
+    assert r.status_code == 402
+
+
 def test_revoked_key_is_unauthorized(mt):
     # revoke the viewer key, then it must stop working
     async def revoke():
