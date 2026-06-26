@@ -1356,11 +1356,15 @@ input {
   border: 1px solid var(--border-soft);
   border-radius: 12px;
   padding: 14px 16px;
-  transition: border-color 0.15s ease, transform 0.15s ease;
+  /* premium dark: subtle "lit from above" highlight (matches landing glass cards) */
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
 }
 .stat:hover {
   border-color: var(--accent);
   transform: translateY(-1px);
+  box-shadow: 0 0 26px -14px color-mix(in srgb, var(--accent) 70%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 .stat__icon {
   position: absolute;
@@ -1514,12 +1518,14 @@ input {
   border: 1px solid var(--border-soft);
   border-radius: 12px;
   padding: 13px 14px;
-  transition: border-color 0.15s ease, transform 0.15s ease;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
 }
 .feature:hover {
   border-color: var(--accent);
   transform: translateY(-1px);
-  box-shadow: 0 0 24px -12px color-mix(in srgb, var(--accent) 75%, transparent);
+  box-shadow: 0 0 24px -12px color-mix(in srgb, var(--accent) 75%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 .feature__icon {
   flex: 0 0 auto;
