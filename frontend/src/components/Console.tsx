@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { getMetrics, health } from "../api";
 import { useCopilot } from "../hooks/useCopilot";
 import { modelShort, providerLabel, useConfig } from "../hooks/useConfig";
+import { AdminPanel } from "./AdminPanel";
 import { Composer } from "./Composer";
 import { Icon } from "./Icon";
 import { Message } from "./Message";
@@ -90,7 +91,7 @@ function IncidentSignal() {
   );
 }
 
-function TopBar({ onHome, onNew }: { onHome: () => void; onNew: () => void }) {
+function TopBar({ onHome, onNew, onAdmin }: { onHome: () => void; onNew: () => void; onAdmin: () => void }) {
   const { config: cfg } = useConfig();
   const [online, setOnline] = useState<boolean | null>(null);
 
@@ -133,6 +134,15 @@ function TopBar({ onHome, onNew }: { onHome: () => void; onNew: () => void }) {
           <Icon name="refresh" size={15} />
           <span>New</span>
         </button>
+        <button
+          className="cns-newbtn"
+          onClick={onAdmin}
+          title="Admin console (multi-tenant)"
+          aria-label="Open admin console"
+        >
+          <Icon name="lock" size={15} />
+          <span>Admin</span>
+        </button>
         {cfg && (
           <span className="model-badge" title={cfg.model}>
             <span className="model-badge__provider">{providerLabel(cfg.provider)}</span>
@@ -154,6 +164,7 @@ export function Console({ onHome }: { onHome: () => void }) {
   const { turns, busy, awaitingApproval, send, respond, stop, newConversation, sendFeedback } =
     useCopilot();
   const endRef = useRef<HTMLDivElement>(null);
+  const [adminOpen, setAdminOpen] = useState(false);
   const disabled = busy || awaitingApproval;
 
   useEffect(() => {
@@ -173,7 +184,8 @@ export function Console({ onHome }: { onHome: () => void }) {
   return (
     <div className="cns">
       <a className="skip-link" href="#cns-main">Skip to main content</a>
-      <TopBar onHome={onHome} onNew={newConversation} />
+      <TopBar onHome={onHome} onNew={newConversation} onAdmin={() => setAdminOpen(true)} />
+      {adminOpen && <AdminPanel onClose={() => setAdminOpen(false)} />}
       <div className="sr-only" role="status" aria-live="polite">
         {liveStatus}
       </div>

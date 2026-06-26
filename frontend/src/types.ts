@@ -110,6 +110,47 @@ export interface AppConfig {
   has_key: boolean;
 }
 
+// --- Admin / multi-tenant ---
+
+export interface UsageSummary {
+  multi_tenant?: boolean;
+  plan?: string;
+  period?: string;
+  investigations_used?: number;
+  investigations_quota?: number;
+  investigations_remaining?: number;
+  tokens_used?: number;
+  warning?: boolean;
+}
+
+export interface AdminOrg {
+  id: string;
+  name: string;
+  plan: string;
+  members: number;
+  active_api_keys: number;
+  integrations: number;
+}
+
+export interface ApiKeyInfo {
+  id: string;
+  prefix: string;
+  name: string;
+  role: string;
+  created_at: string;
+  last_used_at: string;
+  active: boolean;
+}
+
+export interface AuditEvent {
+  ts: string;
+  event: string;
+  org_id: string;
+  actor: string;
+  request_id: string;
+  [k: string]: unknown;
+}
+
 // --- UI-side model ---
 
 export type Role = "user" | "assistant";

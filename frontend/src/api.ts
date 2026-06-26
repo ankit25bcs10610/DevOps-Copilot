@@ -29,6 +29,12 @@ async function get<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+async function del<T>(path: string): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, { method: "DELETE", headers: authHeaders() });
+  if (!res.ok) throw new Error(`${path} ${res.status}`);
+  return res.json() as Promise<T>;
+}
+
 /** POST that consumes a Server-Sent Events stream, invoking `onEvent` per message.
  *  Pass an AbortSignal to cancel mid-stream (the Stop button) — aborting the fetch
  *  disconnects the SSE, which cancels the agent run server-side. */
@@ -171,6 +177,31 @@ export function githubConnect(token: string, repo: string): Promise<GithubStatus
 /** Disconnect GitHub and revert to offline-demo mode. */
 export function githubDisconnect(): Promise<GithubStatus> {
   return post<GithubStatus>("/github/disconnect", {});
+}
+
+// --- Admin / multi-tenant (only functional when COPILOT_MULTI_TENANT=true) --- //
+import type { AdminOrg, ApiKeyInfo, AuditEvent, UsageSummary } from "./types";
+
+export function getUsage(): Promise<UsageSummary> {
+  return get<UsageSummary>("/usage");
+}
+export function getAudit(limit = 50): Promise<{ events: AuditEvent[] }> {
+  return get(`/audit?limit=${limit}`);
+}
+export function verifyAudit(): Promise<{ valid: boolean; count?: number; broken_at?: number }> {
+  return get("/audit/verify");
+}
+export function adminOrg(): Promise<AdminOrg> {
+  return get<AdminOrg>("/admin/org");
+}
+export function adminListKeys(): Promise<{ api_keys: ApiKeyInfo[] }> {
+  return get("/admin/api-keys");
+}
+export function adminCreateKey(name: string, role: string): Promise<{ api_key: string }> {
+  return post("/admin/api-keys", { name, role });
+}
+export function adminRevokeKey(id: string): Promise<unknown> {
+  return del(`/admin/api-keys/${id}`);
 }
 
 /** Liveness check used by the header status dot. */
