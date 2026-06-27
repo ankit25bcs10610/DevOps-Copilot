@@ -206,3 +206,73 @@ def test_evidence_digest_collects_tool_output():
     d = _evidence_digest({"messages": msgs})
     assert "search_logs" in d
     assert "applyDiscount" in d
+
+
+def test_report_node_uses_structured_output(monkeypatch):
+    """Happy path: the schema-guaranteed (with_structured_output) result is used,
+    the text-parse path is NOT hit, and the raw message's tokens are counted."""
+    from app.graph import nodes
+    from app.graph.nodes import _RcaSchema, make_report_node
+
+    parsed = _RcaSchema(
+        summary="Checkout 5xx from a null deref.",
+        severity="SEV2",
+        confidence="high",
+        root_cause="null deref in applyDiscount",
+        affected_services=["checkout-svc"],
+        hypotheses=[],
+        evidence=["NPE at checkout.js:11"],
+        recommended_actions=["guard the null"],
+    )
+
+    class _Structured:
+        def invoke(self, _msgs):
+            return {"raw": SimpleNamespace(usage_metadata={"total_tokens": 11}),
+                    "parsed": parsed, "parsing_error": None}
+
+    class _FakeLLM:
+        def with_structured_output(self, _schema, include_raw=False):
+            return _Structured()
+
+        def invoke(self, _msgs):
+            raise AssertionError("text-parse path must not run on structured success")
+
+    monkeypatch.setattr(nodes, "get_llm", lambda fast=False: _FakeLLM())
+    node = make_report_node()
+    out = node({"messages": [HumanMessage(content="why 500s?"),
+                             AIMessage(content="root cause found")]})
+    assert out["report"]["root_cause"] == "null deref in applyDiscount"
+    assert out["report"]["severity"] == "SEV2"
+    assert out["report"]["postmortem"]  # rendered deterministically
+    assert out["tokens_used"] == 11
+
+
+def test_report_node_falls_back_to_text_parse_on_structured_error(monkeypatch):
+    """If structured output errors, the node falls back to the robust text-parse
+    path (zero regression) and the fallback call's tokens are still counted."""
+    from app.graph import nodes
+    from app.graph.nodes import make_report_node
+
+    json_text = ('{"summary":"s","severity":"SEV1","confidence":"low",'
+                 '"root_cause":"bad deploy abc123","affected_services":[],'
+                 '"hypotheses":[],"evidence":["deploy abc123 at 14:02"],'
+                 '"recommended_actions":[]}')
+
+    class _Structured:
+        def invoke(self, _msgs):
+            raise RuntimeError("provider doesn't support structured output")
+
+    class _FakeLLM:
+        def with_structured_output(self, _schema, include_raw=False):
+            return _Structured()
+
+        def invoke(self, _msgs):
+            return SimpleNamespace(content=json_text, usage_metadata={"total_tokens": 5})
+
+    monkeypatch.setattr(nodes, "get_llm", lambda fast=False: _FakeLLM())
+    node = make_report_node()
+    out = node({"messages": [HumanMessage(content="why 500s?"),
+                             AIMessage(content="a deploy caused it")]})
+    assert out["report"]["root_cause"] == "bad deploy abc123"
+    assert out["report"]["severity"] == "SEV1"
+    assert out["tokens_used"] == 5  # structured raised before logging; fallback counts

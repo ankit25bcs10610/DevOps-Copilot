@@ -90,6 +90,11 @@ def test_normalize_repo_accepts_urls_and_owner_repo():
     assert api._normalize_repo("  acme/app/  ") == "acme/app"
 
 
+def test_signup_requires_multi_tenant(client):
+    # Self-serve signup is a no-op in single-tenant mode (the offline demo default).
+    assert client.post("/signup", json={"org_name": "X", "email": "a@b.com"}).status_code == 400
+
+
 def test_empty_message_rejected(client):
     assert client.post("/chat", json={"thread_id": "t", "message": "   "}).status_code == 400
 

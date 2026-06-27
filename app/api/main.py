@@ -350,6 +350,11 @@ async def require_auth(request: Request) -> None:
     # shared bearer token — PagerDuty/Slack don't send it.
     if request.url.path.startswith("/webhooks/"):
         return
+    # Self-serve signup is how a new tenant GETS its first credential, so it can't
+    # require one. It stays out of _OPEN_PATHS so the IP rate-limiter still applies
+    # (abuse guard); the handler itself enforces multi-tenant + the enabled flag.
+    if request.url.path == "/signup":
+        return
 
     s = get_settings()
     # Multi-tenant: resolve the per-tenant API key (dcp_…) into the request's
@@ -486,6 +491,11 @@ class SetIntegrationRequest(BaseModel):
 
 class SetPlanRequest(BaseModel):
     plan: str
+
+
+class SignupRequest(BaseModel):
+    org_name: str
+    email: str
 
 
 class ChatResponse(BaseModel):
@@ -1117,6 +1127,46 @@ async def admin_set_plan(req: SetPlanRequest) -> dict:
     await tenant_auth.get_store().set_plan(org_id, plan)
     audit.record("plan.changed", org=org_id, plan=plan)
     return {"plan": plan}
+
+
+# --------------------------------------------------------------------------- #
+# Self-serve onboarding — a new tenant creates an org + owner key with no prior
+# credential (the entry point for product signup). Auth-exempt (see require_auth)
+# but still IP rate-limited. Always provisions the FREE plan; upgrades go through
+# billing/admin so signup can't self-assign a paid tier.
+# --------------------------------------------------------------------------- #
+@app.post("/signup")
+async def signup(req: SignupRequest) -> dict:
+    s = get_settings()
+    if not s.copilot_multi_tenant:
+        raise HTTPException(400, "Self-serve signup requires multi-tenant mode (COPILOT_MULTI_TENANT=true).")
+    if not s.copilot_signup_enabled:
+        raise HTTPException(403, "Self-serve signup is disabled on this deployment.")
+    name = (req.org_name or "").strip()
+    email = (req.email or "").strip().lower()
+    if not name or len(name) > 120:
+        raise HTTPException(400, "Provide an organization name (1–120 chars).")
+    if "@" not in email or "." not in email.split("@")[-1] or len(email) > 254:
+        raise HTTPException(400, "Provide a valid email address.")
+    store = tenant_auth.get_store()  # schema created at startup (lifespan)
+    # One org per email: caps free-tier farming on this unauthenticated path and
+    # refuses to bind an already-registered identity to a fresh org. (A never-seen
+    # email can still be claimed here — real email verification before owner binding
+    # needs mail infra and is deferred; disable signup or require SSO when that
+    # threat matters. See docs/COMMERCIALIZATION.md.)
+    if await store.get_membership_by_email(email) is not None:
+        raise HTTPException(409, "An account already exists for this email.")
+    org = await store.create_org(name, plan="free", owner_email=email)
+    api_key, rec = await store.issue_api_key(org.id, name="owner-key", role="owner")
+    audit.record("org.signup", org=org.id, key_id=rec.id, plan=org.plan)
+    return {
+        "org_id": org.id,
+        "org_name": org.name,
+        "plan": org.plan,
+        "role": "owner",
+        "api_key": api_key,
+        "note": "Store this key now — it is shown only once. Use it as a Bearer token.",
+    }
 
 
 # --------------------------------------------------------------------------- #

@@ -4,6 +4,7 @@ import { getMetrics, health } from "../api";
 import { useCopilot } from "../hooks/useCopilot";
 import { modelShort, providerLabel, useConfig } from "../hooks/useConfig";
 import { AdminPanel } from "./AdminPanel";
+import { SignupModal } from "./SignupModal";
 import { Composer } from "./Composer";
 import { Icon } from "./Icon";
 import { Message } from "./Message";
@@ -107,7 +108,17 @@ function IncidentSignal() {
   );
 }
 
-function TopBar({ onHome, onNew, onAdmin }: { onHome: () => void; onNew: () => void; onAdmin: () => void }) {
+function TopBar({
+  onHome,
+  onNew,
+  onAdmin,
+  onSignup,
+}: {
+  onHome: () => void;
+  onNew: () => void;
+  onAdmin: () => void;
+  onSignup: () => void;
+}) {
   const { config: cfg } = useConfig();
   const [online, setOnline] = useState<boolean | null>(null);
 
@@ -152,6 +163,15 @@ function TopBar({ onHome, onNew, onAdmin }: { onHome: () => void; onNew: () => v
         </button>
         <button
           className="cns-newbtn"
+          onClick={onSignup}
+          title="Create an organization (self-serve)"
+          aria-label="Create an account"
+        >
+          <Icon name="sparkles" size={15} />
+          <span>Sign up</span>
+        </button>
+        <button
+          className="cns-newbtn"
           onClick={onAdmin}
           title="Admin console (multi-tenant)"
           aria-label="Open admin console"
@@ -181,6 +201,7 @@ export function Console({ onHome }: { onHome: () => void }) {
     useCopilot();
   const endRef = useRef<HTMLDivElement>(null);
   const [adminOpen, setAdminOpen] = useState(false);
+  const [signupOpen, setSignupOpen] = useState(false);
   const disabled = busy || awaitingApproval;
 
   useEffect(() => {
@@ -200,8 +221,14 @@ export function Console({ onHome }: { onHome: () => void }) {
   return (
     <div className="cns">
       <a className="skip-link" href="#cns-main">Skip to main content</a>
-      <TopBar onHome={onHome} onNew={newConversation} onAdmin={() => setAdminOpen(true)} />
+      <TopBar
+        onHome={onHome}
+        onNew={newConversation}
+        onAdmin={() => setAdminOpen(true)}
+        onSignup={() => setSignupOpen(true)}
+      />
       {adminOpen && <AdminPanel onClose={() => setAdminOpen(false)} />}
+      {signupOpen && <SignupModal onClose={() => setSignupOpen(false)} />}
       <div className="sr-only" role="status" aria-live="polite">
         {liveStatus}
       </div>

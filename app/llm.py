@@ -19,8 +19,10 @@ from __future__ import annotations
 import importlib
 
 from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import SystemMessage
 
 from app import replay, runtime
+from app.config import get_settings
 
 # Per-provider default models: (main, fast).
 _DEFAULTS = {
@@ -124,6 +126,30 @@ def _build(provider: str, model: str, key: str, fast: bool) -> BaseChatModel:
         )
 
     raise ValueError(f"unknown provider '{provider}' (use {'|'.join(_DEFAULTS)})")
+
+
+def cached_system(stable: str, volatile: str = "") -> SystemMessage:
+    """Build the agent's system message with a cache breakpoint after the stable
+    prefix, so Anthropic caches the (tools + system) prefix across the many agent
+    loop iterations in one investigation — they re-read it at ~0.1x input cost.
+
+    `stable` is the unchanging prefix (the agent system prompt + plan, constant
+    within a run); `volatile` is per-iteration text (reviewer feedback, cap notice)
+    placed AFTER the breakpoint so it never invalidates the cached prefix.
+
+    Provider-neutral: only the Anthropic path emits cache_control content blocks.
+    Every other provider (and the cache-disabled path) gets a plain string, so
+    behavior is byte-identical to before — caching is purely additive.
+    """
+    enabled = get_settings().copilot_prompt_cache and runtime.provider() == "anthropic"
+    if not enabled:
+        return SystemMessage(content=stable + (("\n\n" + volatile) if volatile else ""))
+    blocks: list[str | dict] = [
+        {"type": "text", "text": stable, "cache_control": {"type": "ephemeral"}}
+    ]
+    if volatile:
+        blocks.append({"type": "text", "text": volatile})
+    return SystemMessage(content=blocks)
 
 
 def resolved_models() -> tuple[str, str]:

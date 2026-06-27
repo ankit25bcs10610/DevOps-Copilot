@@ -12,12 +12,13 @@ import re
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.types import interrupt
+from pydantic import BaseModel, Field
 
-from app import incident_memory, policy
+from app import incident_memory, policy, replay
 from app.config import get_settings
 from app.graph.prompts import AGENT_SYSTEM, PLANNER_SYSTEM, REFLECT_SYSTEM, REPORT_SYSTEM
 from app.graph.state import AgentState
-from app.llm import get_llm
+from app.llm import cached_system, get_llm
 
 log = logging.getLogger("devcopilot.agent")
 
@@ -31,13 +32,18 @@ def _log_usage(node: str, resp) -> int:
         return 0
     details = um.get("input_token_details") or {}
     total = um.get("total_tokens") or 0
+    # Surface BOTH cache_read and cache_creation: if prompt caching is enabled but
+    # cache_creation stays 0 across a run (e.g. the cacheable prefix is below the
+    # model's minimum because the tool set was narrowed), the cache_control marker
+    # is a silent no-op — this makes that visible instead of an invisible cost.
     log.info(
-        "llm_usage node=%s input=%s output=%s total=%s cache_read=%s",
+        "llm_usage node=%s input=%s output=%s total=%s cache_read=%s cache_creation=%s",
         node,
         um.get("input_tokens"),
         um.get("output_tokens"),
         total,
         details.get("cache_read"),
+        details.get("cache_creation"),
     )
     try:
         return int(total)
@@ -152,24 +158,27 @@ def make_agent_node(tools):
         over_budget = _over_token_budget(state.get("tokens_used", 0), settings)
         at_cap = iteration >= settings.copilot_max_iterations or over_budget
 
+        # The agent system prompt + plan is the stable, cacheable prefix (constant
+        # across this run's loop iterations); per-iteration text (cap notice or
+        # reviewer feedback) goes after the cache breakpoint so it never busts it.
+        stable = AGENT_SYSTEM.format(plan=plan_text)
         if at_cap:
             limit = "token budget" if over_budget else "investigation step limit"
-            system = SystemMessage(
-                content=AGENT_SYSTEM.format(plan=plan_text)
-                + f"\n\nYou have reached the {limit}. Do NOT call any tools. "
+            volatile = (
+                f"You have reached the {limit}. Do NOT call any tools. "
                 "Summarize the root cause and your recommendation now."
             )
-            resp = llm_plain.invoke([system, *state["messages"]])
+            resp = llm_plain.invoke([cached_system(stable, volatile), *state["messages"]])
         else:
-            base = AGENT_SYSTEM.format(plan=plan_text)
-            if feedback:
-                # The reflect node judged the last answer incomplete — tell the
-                # agent exactly what to close so it doesn't repeat itself.
-                base += (
-                    "\n\nReviewer feedback on your previous answer — address this "
-                    f"now before finishing:\n{feedback}"
-                )
-            resp = llm_tools.invoke([SystemMessage(content=base), *state["messages"]])
+            # The reflect node judged the last answer incomplete — tell the agent
+            # exactly what to close so it doesn't repeat itself.
+            volatile = (
+                "Reviewer feedback on your previous answer — address this now "
+                f"before finishing:\n{feedback}"
+                if feedback
+                else ""
+            )
+            resp = llm_tools.invoke([cached_system(stable, volatile), *state["messages"]])
 
         tokens = _log_usage("agent", resp)
         return {"messages": [resp], "iteration": iteration, "tokens_used": tokens}
@@ -561,6 +570,28 @@ def _render_postmortem(report: dict, request: str) -> str:
     return "\n".join(lines)
 
 
+# Schema for `with_structured_output` — mirrors REPORT_SYSTEM's JSON contract.
+# Used to make the model's RCA *schema-guaranteed* (it returns a validated object,
+# not free text we hope is JSON). Loose field types + defaults so the provider's
+# tool-schema is easy to satisfy; _normalize_report still tightens every value.
+class _HypothesisSchema(BaseModel):
+    cause: str = ""
+    verdict: str = "inconclusive"  # validated | invalidated | inconclusive
+    confidence: str = "low"  # high | medium | low
+    evidence: list[str] = Field(default_factory=list)
+
+
+class _RcaSchema(BaseModel):
+    summary: str = ""
+    severity: str = "SEV3"  # SEV1..SEV4 | info
+    confidence: str = "low"  # high | medium | low
+    root_cause: str | None = None
+    affected_services: list[str] = Field(default_factory=list)
+    hypotheses: list[_HypothesisSchema] = Field(default_factory=list)
+    evidence: list[str] = Field(default_factory=list)
+    recommended_actions: list[str] = Field(default_factory=list)
+
+
 def make_report_node():
     """Node: compile the finished investigation into a structured RCA report +
     postmortem. Runs once when the investigation is done (after reflect)."""
@@ -581,14 +612,37 @@ def make_report_node():
             f"Agent's final answer:\n{final_answer}\n\n"
             f"Evidence gathered (tool calls + results):\n{digest or '(none recorded)'}"
         )
+        msgs = [SystemMessage(content=REPORT_SYSTEM), HumanMessage(content=human)]
         tokens = 0
-        try:
-            resp = llm.invoke([SystemMessage(content=REPORT_SYSTEM), HumanMessage(content=human)])
-            tokens = _log_usage("report", resp)
-            report = _parse_report(str(resp.content), fallback_summary=final_answer)
-        except Exception:  # noqa: BLE001 — reporting must never break a finished run
-            log.exception("report synthesis failed; using fallback report")
-            report = _parse_report("", fallback_summary=final_answer)
+        report: dict | None = None
+        # Prefer schema-guaranteed structured output (provider-neutral via
+        # LangChain) so the RCA is a validated object, not free text we parse and
+        # hope is JSON. Gated to OFF mode only — record/replay both use the single
+        # text-parse path below, because the cassette layer wraps .invoke() but not
+        # with_structured_output(), so recording it would be invisible and replay
+        # would miss the key. On any failure it also falls back, so this is a strict
+        # upgrade in production and record/replay-symmetric for the golden gate.
+        if replay.mode() == "off":
+            try:
+                structured = llm.with_structured_output(_RcaSchema, include_raw=True)
+                out = structured.invoke(msgs)
+                tokens = _log_usage("report", out.get("raw"))
+                parsed = out.get("parsed")
+                if parsed is not None and not out.get("parsing_error"):
+                    report = _normalize_report(parsed.model_dump(), fallback_summary=final_answer)
+            except Exception:  # noqa: BLE001 — fall back to text parsing
+                log.warning("structured RCA output failed; falling back to text parse", exc_info=True)
+                report = None
+        if report is None:
+            try:
+                resp = llm.invoke(msgs)
+                # Accumulate, never overwrite: if the structured call above already
+                # spent tokens (HTTP-ok but parse failed), they must still count.
+                tokens += _log_usage("report", resp)
+                report = _parse_report(str(resp.content), fallback_summary=final_answer)
+            except Exception:  # noqa: BLE001 — reporting must never break a finished run
+                log.exception("report synthesis failed; using fallback report")
+                report = _parse_report("", fallback_summary=final_answer)
         report = _calibrate_confidence(report)
         report = _verify_grounding(report, digest)  # deterministic critic pass
         report["postmortem"] = _render_postmortem(report, request)

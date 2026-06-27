@@ -204,6 +204,19 @@ export function adminRevokeKey(id: string): Promise<unknown> {
   return del(`/admin/api-keys/${id}`);
 }
 
+export interface SignupResult {
+  org_id: string;
+  org_name: string;
+  plan: string;
+  role: string;
+  api_key: string;
+  note: string;
+}
+/** Self-serve onboarding: create an org + owner key (multi-tenant mode only). */
+export function signup(orgName: string, email: string): Promise<SignupResult> {
+  return post<SignupResult>("/signup", { org_name: orgName, email });
+}
+
 /** Liveness check used by the header status dot. */
 export async function health(): Promise<boolean> {
   try {

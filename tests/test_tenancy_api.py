@@ -174,6 +174,36 @@ def test_supabase_jwt_login_maps_member_to_org(mt, monkeypatch):
     assert mt["client"].get("/config", headers={"Authorization": "Bearer aaa.bbb.ccc"}).status_code == 401
 
 
+def test_signup_creates_org_and_working_key(mt):
+    c = mt["client"]
+    r = c.post("/signup", json={"org_name": "NewCo", "email": "Founder@NewCo.com"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["api_key"].startswith("dcp_")
+    assert body["plan"] == "free" and body["role"] == "owner"
+    # the freshly-issued owner key authenticates immediately
+    assert c.get("/config", headers=_auth(body["api_key"])).status_code == 200
+
+
+def test_signup_is_capped_to_one_org_per_email(mt):
+    c = mt["client"]
+    assert c.post("/signup", json={"org_name": "First", "email": "dup@x.com"}).status_code == 200
+    # a second signup with the same email is refused (free-tier farming / squatting guard)
+    assert c.post("/signup", json={"org_name": "Second", "email": "dup@x.com"}).status_code == 409
+
+
+def test_signup_rejects_bad_input(mt):
+    c = mt["client"]
+    assert c.post("/signup", json={"org_name": "X", "email": "not-an-email"}).status_code == 400
+    assert c.post("/signup", json={"org_name": "", "email": "a@b.com"}).status_code == 400
+
+
+def test_signup_disabled_returns_403(mt, monkeypatch):
+    monkeypatch.setenv("COPILOT_SIGNUP_ENABLED", "false")
+    cfg.get_settings.cache_clear()
+    assert mt["client"].post("/signup", json={"org_name": "X", "email": "a@b.com"}).status_code == 403
+
+
 def test_billing_requires_owner(mt):
     c = mt["client"]
     # admin cannot change plan (manage_billing => owner)

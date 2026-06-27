@@ -141,6 +141,11 @@ class Settings(BaseSettings):
     # role membership. Verification uses only the PUBLIC JWKS — no Supabase secret.
     supabase_jwks_url: str = ""
     supabase_jwt_aud: str = "authenticated"
+    # Self-serve onboarding: when true (and multi-tenant is on), POST /signup lets a
+    # new user create an org + owner API key without an existing credential. Always
+    # provisions the free plan (upgrades go through billing). Disable in locked-down
+    # deployments to require admin-side provisioning (CLI / /admin).
+    copilot_signup_enabled: bool = True
 
     # --- Agent behavior ---
     # Max agent (LLM) calls per turn — bounds the agent<->tools loop.
@@ -150,6 +155,10 @@ class Settings(BaseSettings):
     # — a hard cost kill-switch on top of the iteration cap. 0 = unlimited.
     copilot_max_tokens_per_run: int = 0
     copilot_checkpoint_db: str = "./copilot_checkpoints.sqlite"
+    # Prompt caching (Anthropic): cache the stable system prompt + bound tool
+    # schemas so the agent's many loop iterations re-read them at ~0.1x cost
+    # instead of re-paying full input price each turn. No-op for other providers.
+    copilot_prompt_cache: bool = True
 
     @field_validator("copilot_provider")
     @classmethod
