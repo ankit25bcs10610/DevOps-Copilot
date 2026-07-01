@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Literal
 
+from langgraph.graph import END
+
 from app import policy
 from app.graph.state import AgentState
 
@@ -45,3 +47,9 @@ def route_after_approval(state: AgentState) -> Literal["tools", "agent"]:
 def route_after_reflect(state: AgentState) -> Literal["agent", "report"]:
     """When done, compile the structured RCA report; otherwise keep investigating."""
     return "report" if state.get("status") == "done" else "agent"
+
+
+def route_after_verify(state: AgentState):
+    """After fix verification: if the verify node set status back to 'investigating',
+    it bounced an unverified fix back to the agent to revise; otherwise the run ends."""
+    return "agent" if state.get("status") == "investigating" else END

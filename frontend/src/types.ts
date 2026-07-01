@@ -36,6 +36,19 @@ export interface Hypothesis {
   evidence: string[];
 }
 
+export type VerifyVerdict = "verified" | "unverified" | "inconclusive" | "no_fix_proposed";
+
+// Fix-verification result (set server-side by the verify node): does the proposed
+// remediation address the root cause, and what signal confirms resolution.
+export interface Verification {
+  verdict: VerifyVerdict;
+  addresses_cause: boolean;
+  confidence: Confidence;
+  resolution_criteria: string[];
+  residual_risks: string[];
+  rationale: string;
+}
+
 export interface RcaReport {
   summary: string;
   severity: Severity;
@@ -50,6 +63,8 @@ export interface RcaReport {
   calibrated_confidence?: Confidence;
   abstained?: boolean;
   needs?: string[];
+  // Fix verification (set server-side by the verify node).
+  verification?: Verification;
 }
 
 export interface ChatResponse {

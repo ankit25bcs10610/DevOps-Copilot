@@ -15,6 +15,8 @@ UI** — those overrides are in-memory only, not persisted across restarts.
 | `COPILOT_API_TOKEN` | — | Bearer token guarding the API (empty = open, dev only) |
 | `COPILOT_MAX_ITERATIONS` | `8` | Max agent steps per turn |
 | `COPILOT_MAX_TOKENS_PER_RUN` | `0` | Per-investigation token budget (0 = unlimited) |
+| `COPILOT_VERIFY_FIX` | `true` | Verify the proposed fix addresses the root cause (adds the verify node) |
+| `COPILOT_VERIFY_MAX_ATTEMPTS` | `1` | Times an unverified fix bounces back to the agent to revise (0 = annotate only) |
 | `COPILOT_CHECKPOINT_DB` | `./copilot_checkpoints.sqlite` | SQLite path or a `postgres://…` URL |
 
 ## Data sources & connectors

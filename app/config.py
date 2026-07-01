@@ -159,6 +159,15 @@ class Settings(BaseSettings):
     # schemas so the agent's many loop iterations re-read them at ~0.1x cost
     # instead of re-paying full input price each turn. No-op for other providers.
     copilot_prompt_cache: bool = True
+    # Fix verification: after the RCA report is compiled, a verify node judges
+    # whether a proposed fix actually addresses the root cause and — bounded by
+    # copilot_verify_max_attempts — bounces the run back to the agent to revise a
+    # fix that misses. When off, the run ends at the report node (prior behavior).
+    copilot_verify_fix: bool = True
+    # How many times the verify node may send the run back to the agent to revise a
+    # fix that doesn't address the root cause. Bounds the loop; 0 disables the
+    # bounce (verification still annotates the report). Default 1 (single revision).
+    copilot_verify_max_attempts: int = 1
 
     @field_validator("copilot_provider")
     @classmethod

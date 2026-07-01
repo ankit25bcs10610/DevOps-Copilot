@@ -1,7 +1,21 @@
 import { useState } from "react";
 
-import type { Confidence, RcaReport, Severity, Verdict } from "../types";
+import type { Confidence, RcaReport, Severity, Verdict, VerifyVerdict } from "../types";
 import { Icon } from "./Icon";
+
+const VERIFY_ICON: Record<VerifyVerdict, string> = {
+  verified: "check",
+  unverified: "x",
+  inconclusive: "help",
+  no_fix_proposed: "help",
+};
+
+const VERIFY_LABEL: Record<VerifyVerdict, string> = {
+  verified: "Fix verified",
+  unverified: "Fix does not resolve the cause",
+  inconclusive: "Fix unverified — inconclusive",
+  no_fix_proposed: "No fix proposed",
+};
 
 const SEV_LABEL: Record<Severity, string> = {
   SEV1: "SEV1 · Critical",
@@ -131,6 +145,44 @@ export function RcaReportCard({ report }: { report: RcaReport }) {
                   <li key={i}>{a}</li>
                 ))}
               </ol>
+            </div>
+          )}
+
+          {report.verification && report.verification.verdict !== "no_fix_proposed" && (
+            <div className="rca__section">
+              <h4 className="rca__h">Fix verification</h4>
+              <div className={`rca__verify rca__verify--${report.verification.verdict}`}>
+                <div className="rca__verify-top">
+                  <Icon name={VERIFY_ICON[report.verification.verdict]} size={14} className="rca__hyp-icon" />
+                  <span className="rca__verify-verdict">{VERIFY_LABEL[report.verification.verdict]}</span>
+                  <span className={`rca__conf rca__conf--${report.verification.confidence}`}>
+                    {report.verification.confidence} confidence
+                  </span>
+                </div>
+                {report.verification.rationale && (
+                  <p className="rca__verify-rationale">{report.verification.rationale}</p>
+                )}
+                {report.verification.resolution_criteria.length > 0 && (
+                  <>
+                    <div className="rca__verify-label">Resolution criteria</div>
+                    <ul className="rca__ev rca__ev--flat">
+                      {report.verification.resolution_criteria.map((c, i) => (
+                        <li key={i}><code>{c}</code></li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+                {report.verification.residual_risks.length > 0 && (
+                  <>
+                    <div className="rca__verify-label">Residual risks</div>
+                    <ul className="rca__needs">
+                      {report.verification.residual_risks.map((r, i) => (
+                        <li key={i}>{r}</li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </div>
             </div>
           )}
 

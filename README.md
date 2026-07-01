@@ -11,7 +11,7 @@
 ![LangGraph](https://img.shields.io/badge/LangGraph-stateful%20agent-1C3C3C)
 ![MCP](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-7C5CFF)
 
-LangGraph 6-node graph · 9 MCP servers / 47 tools · structured RCA + postmortem · human-in-the-loop · opt-in multi-tenant SaaS · runs fully offline
+LangGraph 7-node graph · 9 MCP servers / 47 tools · structured RCA + postmortem · fix verification · human-in-the-loop · opt-in multi-tenant SaaS · runs fully offline
 
 </div>
 
@@ -83,7 +83,7 @@ Full instructions (CLI · API · web dev server · Docker · triggered mode) →
                                        plan → agent → (policy route)
                                          ├─ approve? → approval  ◄── human ✅/❌
                                          ├─ read?    → tools (redacted + injection-scanned)
-                                         └─ done?    → reflect → report → RCA + postmortem
+                                         └─ done?    → reflect → report → verify (fix?) → RCA + postmortem
                                        checkpointer: SQLite / Postgres (resumable)
                                               │  MCP (stdio)
         datadog · pagerduty · kubernetes · sentry · traces · deploys · github · repo · incident-memory
@@ -99,7 +99,7 @@ The agent never imports a server — it only sees the tools each MCP server adve
 | **[Usage](docs/USAGE.md)** | Install & run it (CLI · API · web · Docker), and how a session works |
 | **[Configuration](docs/CONFIGURATION.md)** | Every environment variable + the full HTTP API surface |
 | **[Architecture](docs/ARCHITECTURE.md)** | The three layers and the LangGraph design |
-| **[The agent](docs/AGENT.md)** | The 6-node loop, approval gate, RCA report, guardrails, token budget |
+| **[The agent](docs/AGENT.md)** | The 7-node loop, approval gate, RCA report, fix verification, guardrails, token budget |
 | **[Connectors](docs/CONNECTORS.md)** | The 9 MCP servers / 47 tools, live/offline modes, how to add one |
 | **[Hardening](docs/HARDENING.md)** | Reliability, security, cost, observability, reproducibility, testing/CI |
 | **[Evaluation](docs/EVALUATION.md)** | Eval harness, trajectory/path-safety scorers, golden-replay CI gate |
