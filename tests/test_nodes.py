@@ -5,13 +5,19 @@ from types import SimpleNamespace
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
+from langgraph.graph import END
+
+from app.graph.edges import route_after_verify
 from app.graph.nodes import (
     _calibrate_confidence,
     _coerce_str_list,
     _evidence_digest,
+    _extract_proposed_fix,
+    _fix_targets_cause,
     _history_digest,
     _over_token_budget,
     _parse_report,
+    _parse_verification,
     _prior_incidents_block,
     _render_postmortem,
     _verify_grounding,
@@ -276,3 +282,181 @@ def test_report_node_falls_back_to_text_parse_on_structured_error(monkeypatch):
     assert out["report"]["root_cause"] == "bad deploy abc123"
     assert out["report"]["severity"] == "SEV1"
     assert out["tokens_used"] == 5  # structured raised before logging; fallback counts
+
+
+# --------------------------------------------------------------------------- #
+# Fix-verification node + helpers
+# --------------------------------------------------------------------------- #
+_CAUSE_REPORT = {
+    "root_cause": "null deref in applyDiscount at checkout.js:11",
+    "affected_services": ["checkout-svc"],
+    "evidence": ["TypeError at checkout.js:11 in checkout-svc"],
+    "hypotheses": [],
+    "recommended_actions": ["Guard the null in applyDiscount"],
+}
+
+
+def _pr_call(**args):
+    return AIMessage(content="", tool_calls=[{"name": "create_pull_request", "args": args, "id": "pr1"}])
+
+
+def test_extract_proposed_fix_prefers_pr_call():
+    state = {"messages": [
+        HumanMessage(content="why 500s?"),
+        _pr_call(title="Guard null in applyDiscount", body="add check in checkout.js"),
+    ]}
+    fix = _extract_proposed_fix(state, {"recommended_actions": ["roll back"]})
+    assert fix["has_fix"] and fix["source"] == "pr"
+    assert "applyDiscount" in fix["text"] and "checkout.js" in fix["text"]
+
+
+def test_extract_proposed_fix_falls_back_to_actions_when_root_cause_known():
+    state = {"messages": [HumanMessage(content="why?")]}
+    fix = _extract_proposed_fix(state, {"root_cause": "bad deploy", "recommended_actions": ["roll back deploy abc123"]})
+    assert fix["has_fix"] and fix["source"] == "actions"
+    assert "abc123" in fix["text"]
+
+
+def test_extract_proposed_fix_none_for_informational_run():
+    state = {"messages": [HumanMessage(content="which services exist?")]}
+    fix = _extract_proposed_fix(state, {"root_cause": None, "recommended_actions": []})
+    assert not fix["has_fix"] and fix["source"] == "none"
+
+
+def test_fix_targets_cause_grounded_on_overlap():
+    fix_text = "title: Guard null in applyDiscount\nbody: add null check in checkout.js:11 for checkout-svc"
+    g = _fix_targets_cause(fix_text, _CAUSE_REPORT)
+    assert g["grounded"] is True
+    assert "checkout.js:11" in g["shared"] or "applydiscount" in g["shared"]
+
+
+def test_fix_targets_cause_ungrounded_on_unrelated_fix():
+    g = _fix_targets_cause("title: Update README\nbody: fix a typo in the docs", _CAUSE_REPORT)
+    assert g["grounded"] is False
+
+
+def test_parse_verification_normalizes_valid_json():
+    text = ('{"verdict":"verified","addresses_cause":true,"confidence":"high",'
+            '"resolution_criteria":["checkout 5xx back to <0.1%"],'
+            '"residual_risks":["may miss a second null path"],"rationale":"guards the null"}')
+    v = _parse_verification(text, has_fix=True)
+    assert v["verdict"] == "verified"
+    assert v["addresses_cause"] is True
+    assert v["confidence"] == "high"
+    assert v["resolution_criteria"] == ["checkout 5xx back to <0.1%"]
+    assert v["residual_risks"] == ["may miss a second null path"]
+
+
+def test_parse_verification_falls_back_on_garbage():
+    assert _parse_verification("not json at all", has_fix=True)["verdict"] == "inconclusive"
+    assert _parse_verification("", has_fix=False)["verdict"] == "no_fix_proposed"
+    # Bad enums coerced to safe defaults.
+    v = _parse_verification('{"verdict":"maybe","confidence":"certain"}', has_fix=True)
+    assert v["verdict"] == "inconclusive" and v["confidence"] == "low"
+
+
+def test_render_postmortem_includes_verification_section():
+    r = _parse_report("", fallback_summary="s")
+    r["verification"] = {
+        "verdict": "verified", "confidence": "high", "rationale": "guards the null",
+        "resolution_criteria": ["5xx back to baseline"], "residual_risks": ["edge case X"],
+    }
+    md = _render_postmortem(r, "why 500s?")
+    assert "## Fix verification" in md
+    assert "verified" in md
+    assert "5xx back to baseline" in md
+    assert "edge case X" in md
+
+
+def test_render_postmortem_omits_verification_when_no_fix():
+    r = _parse_report("", fallback_summary="s")
+    r["verification"] = {"verdict": "no_fix_proposed"}
+    assert "## Fix verification" not in _render_postmortem(r, "which services?")
+
+
+def test_route_after_verify():
+    assert route_after_verify({"status": "investigating"}) == "agent"
+    assert route_after_verify({"status": "done"}) == END
+    assert route_after_verify({}) == END
+
+
+def _verify_llm(monkeypatch, content):
+    from app.graph import nodes
+
+    class _FakeLLM:
+        def invoke(self, _msgs):
+            return SimpleNamespace(content=content, usage_metadata={"total_tokens": 7})
+
+    monkeypatch.setattr(nodes, "get_llm", lambda fast=False: _FakeLLM())
+
+
+def test_verify_node_loops_back_once_on_unverified_fix(monkeypatch):
+    from app.graph.nodes import make_verify_node
+
+    _verify_llm(monkeypatch, '{"verdict":"unverified","confidence":"low",'
+                             '"resolution_criteria":["5xx back to baseline"],'
+                             '"rationale":"touches the wrong service"}')
+    node = make_verify_node()
+    state = {
+        "messages": [HumanMessage(content="why 500s?"), _pr_call(title="unrelated change to billing")],
+        "report": dict(_CAUSE_REPORT),
+        "verify_attempts": 0,
+    }
+    out = node(state)
+    assert out["status"] == "investigating"      # bounced back to the agent
+    assert out["verify_attempts"] == 1
+    assert out["feedback"]                          # targeted revision feedback set
+    assert out["report"]["verification"]["verdict"] == "unverified"
+
+
+def test_verify_node_does_not_loop_once_attempts_exhausted(monkeypatch):
+    from app.graph.nodes import make_verify_node
+
+    _verify_llm(monkeypatch, '{"verdict":"unverified","rationale":"still wrong"}')
+    node = make_verify_node()
+    state = {
+        "messages": [HumanMessage(content="why?"), _pr_call(title="still unrelated")],
+        "report": dict(_CAUSE_REPORT),
+        "verify_attempts": 1,  # already used the one allowed revision
+    }
+    out = node(state)
+    assert out["status"] == "done"                # finalize, don't spin
+    assert "feedback" not in out
+
+
+def test_verify_node_downgrades_verified_when_fix_ungrounded(monkeypatch):
+    from app.graph.nodes import make_verify_node
+
+    # LLM optimistically says "verified", but the PR text references nothing in the
+    # cause (and the report's actions are unrelated too), so grounding must downgrade it.
+    _verify_llm(monkeypatch, '{"verdict":"verified","confidence":"high","rationale":"looks good"}')
+    node = make_verify_node()
+    ungrounded_report = dict(_CAUSE_REPORT, recommended_actions=["Update the onboarding docs"])
+    state = {
+        "messages": [HumanMessage(content="why?"), _pr_call(title="Update README", body="fix a typo")],
+        "report": ungrounded_report,
+        "verify_attempts": 0,
+    }
+    out = node(state)
+    assert out["status"] == "done"
+    assert out["report"]["verification"]["verdict"] == "inconclusive"  # downgraded
+    assert out["report"]["verification"]["grounding"]["grounded"] is False
+
+
+def test_verify_node_no_fix_finalizes_without_calling_llm(monkeypatch):
+    from app.graph import nodes
+    from app.graph.nodes import make_verify_node
+
+    class _BoomLLM:
+        def invoke(self, _msgs):
+            raise AssertionError("LLM must not be called when there is no fix to verify")
+
+    monkeypatch.setattr(nodes, "get_llm", lambda fast=False: _BoomLLM())
+    node = make_verify_node()
+    state = {
+        "messages": [HumanMessage(content="which services exist?")],
+        "report": {"root_cause": None, "recommended_actions": []},
+    }
+    out = node(state)
+    assert out["status"] == "done"
+    assert out["report"]["verification"]["verdict"] == "no_fix_proposed"

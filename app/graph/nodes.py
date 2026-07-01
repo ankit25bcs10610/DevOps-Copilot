@@ -16,7 +16,13 @@ from pydantic import BaseModel, Field
 
 from app import incident_memory, policy, replay
 from app.config import get_settings
-from app.graph.prompts import AGENT_SYSTEM, PLANNER_SYSTEM, REFLECT_SYSTEM, REPORT_SYSTEM
+from app.graph.prompts import (
+    AGENT_SYSTEM,
+    PLANNER_SYSTEM,
+    REFLECT_SYSTEM,
+    REPORT_SYSTEM,
+    VERIFY_SYSTEM,
+)
 from app.graph.state import AgentState
 from app.llm import cached_system, get_llm
 
@@ -561,6 +567,23 @@ def _render_postmortem(report: dict, request: str) -> str:
     if actions:
         lines += ["", "## Recommended actions / follow-ups"]
         lines += [f"- [ ] {a}" for a in actions]
+    verification = report.get("verification")
+    if verification and verification.get("verdict") not in (None, "no_fix_proposed"):
+        lines += ["", "## Fix verification"]
+        lines.append(
+            f"- **Verdict:** {verification.get('verdict', 'inconclusive')} "
+            f"(confidence: {verification.get('confidence', 'low')})"
+        )
+        if verification.get("rationale"):
+            lines.append(f"- {verification['rationale']}")
+        criteria = verification.get("resolution_criteria") or []
+        if criteria:
+            lines.append("- **Resolution criteria — confirm before closing:**")
+            lines += [f"    - [ ] {c}" for c in criteria]
+        risks = verification.get("residual_risks") or []
+        if risks:
+            lines.append("- **Residual risks:**")
+            lines += [f"    - {r}" for r in risks]
     lines += [
         "",
         "---",
@@ -649,3 +672,190 @@ def make_report_node():
         return {"report": report, "status": "done", "tokens_used": tokens}
 
     return report_node
+
+
+# --------------------------------------------------------------------------- #
+# Verify node — assess whether the PROPOSED FIX resolves the incident.
+# The report node answers "what's the cause + here's a suggested fix"; this node
+# closes the loop: does that fix actually address the root cause, and what signal
+# would confirm resolution? It grounds the LLM's verdict deterministically (a fix
+# that doesn't touch the implicated code can't be "verified"), and — bounded by
+# copilot_verify_max_attempts — bounces the run back to the agent to revise a fix
+# that misses. All parsing/grounding lives in pure helpers so it's unit-testable
+# without an LLM, and it degrades gracefully: verification can never break a run.
+# --------------------------------------------------------------------------- #
+_VERIFY_VERDICTS = {"verified", "unverified", "inconclusive", "no_fix_proposed"}
+
+
+def _extract_proposed_fix(state: AgentState, report: dict) -> dict:
+    """Find the remediation the run proposed, for the verify node to assess. Prefers
+    a create_pull_request tool call (the strongest 'a fix was proposed' signal); else
+    falls back to the report's recommended actions when a root cause was established.
+    Pure + testable. Returns {has_fix, source, text}."""
+    pr_parts: list[str] = []
+    for m in state.get("messages", []):
+        if isinstance(m, AIMessage) and m.tool_calls:
+            for c in m.tool_calls:
+                if c.get("name") != "create_pull_request":
+                    continue
+                args = c.get("args") or {}
+                for k in ("title", "body", "description", "diff", "files", "branch", "head"):
+                    v = args.get(k)
+                    if v:
+                        pr_parts.append(f"{k}: {v if isinstance(v, str) else json.dumps(v, default=str)}")
+    actions = report.get("recommended_actions") or []
+    if pr_parts:
+        text = "\n".join(pr_parts)
+        if actions:
+            text += "\nRecommended actions:\n" + "\n".join(actions)
+        return {"has_fix": True, "source": "pr", "text": text[:2500]}
+    if report.get("root_cause") and actions:
+        return {"has_fix": True, "source": "actions", "text": "\n".join(actions)[:2000]}
+    return {"has_fix": False, "source": "none", "text": ""}
+
+
+def _fix_targets_cause(fix_text: str, report: dict) -> dict:
+    """Deterministic check that the proposed fix references the files/services/symbols
+    implicated by the root cause — a fix that touches unrelated code can't be
+    'verified'. Pure + free (no LLM). Returns {grounded, shared, ratio}."""
+    cause_blob = " ".join(
+        [
+            report.get("root_cause") or "",
+            " ".join(report.get("affected_services") or []),
+            " ".join(report.get("evidence") or []),
+            " ".join(ev for h in (report.get("hypotheses") or []) for ev in (h.get("evidence") or [])),
+        ]
+    )
+    cause_tokens = _salient_tokens(cause_blob)
+    fix_tokens = _salient_tokens(fix_text)
+    if not cause_tokens or not fix_tokens:
+        return {"grounded": False, "shared": [], "ratio": None}
+    shared = fix_tokens & cause_tokens
+    # A shared token that looks like a file/path/symbol/identifier (has a separator
+    # or a digit) is strong evidence the fix targets the implicated code, not just
+    # incidental English overlap.
+    specific = {t for t in shared if any(c in t for c in "._/:") or any(ch.isdigit() for ch in t)}
+    grounded = len(shared) >= 2 or bool(specific)
+    return {"grounded": grounded, "shared": sorted(shared)[:8], "ratio": round(len(shared) / len(cause_tokens), 2)}
+
+
+def _normalize_verification(data: dict, has_fix: bool) -> dict:
+    """Coerce a parsed model dict into the canonical verification shape with safe
+    defaults. Pure + total: any odd input yields a valid verification, not a raise."""
+    verdict = str(data.get("verdict", "")).strip().lower()
+    if verdict not in _VERIFY_VERDICTS:
+        verdict = "inconclusive" if has_fix else "no_fix_proposed"
+    conf = str(data.get("confidence", "")).strip().lower()
+    rationale = data.get("rationale")
+    return {
+        "verdict": verdict,
+        "addresses_cause": bool(data.get("addresses_cause")),
+        "confidence": conf if conf in _CONFIDENCE else "low",
+        "resolution_criteria": _coerce_str_list(data.get("resolution_criteria"), limit=8),
+        "residual_risks": _coerce_str_list(data.get("residual_risks"), limit=8),
+        "rationale": rationale.strip()[:600] if isinstance(rationale, str) else "",
+    }
+
+
+def _parse_verification(text: str, has_fix: bool) -> dict:
+    """Extract the JSON object from a model reply and normalize it. On any failure,
+    return a safe inconclusive (or no_fix_proposed) verification."""
+    fallback = _normalize_verification({}, has_fix)
+    if not text or not text.strip():
+        return fallback
+    start, end = text.find("{"), text.rfind("}")
+    if start == -1 or end <= start:
+        return fallback
+    try:
+        data = json.loads(text[start : end + 1])
+    except (ValueError, TypeError):
+        return fallback
+    if not isinstance(data, dict):
+        return fallback
+    return _normalize_verification(data, has_fix)
+
+
+def make_verify_node():
+    """Node: verify that the proposed fix would resolve the incident. Runs once after
+    the report node. Emits report["verification"] and, when a fix clearly misses the
+    root cause, bounces back to the agent (bounded) to revise it."""
+    settings = get_settings()
+    llm = get_llm(fast=True)
+
+    def verify_node(state: AgentState) -> dict:
+        report = state.get("report") or {}
+        # Feature disabled -> behave exactly as before (report was terminal).
+        if not settings.copilot_verify_fix:
+            return {"status": "done"}
+
+        request = _last_user_text(state)
+        fix = _extract_proposed_fix(state, report)
+        if not fix["has_fix"]:
+            # Nothing to verify (informational request, or cause explained without a
+            # remediation). Annotate and finish — never loop.
+            verification = _normalize_verification(
+                {"verdict": "no_fix_proposed", "rationale": "No remediation was proposed to verify."},
+                has_fix=False,
+            )
+            report["verification"] = verification
+            report["postmortem"] = _render_postmortem(report, request)
+            return {"verification": verification, "report": report, "status": "done"}
+
+        digest = _evidence_digest(state)
+        human = (
+            f"Root cause:\n{report.get('root_cause') or '(none explicitly stated)'}\n\n"
+            f"Proposed fix:\n{fix['text']}\n\n"
+            f"Evidence gathered (tool calls + results):\n{digest or '(none recorded)'}"
+        )
+        tokens = 0
+        try:
+            resp = llm.invoke([SystemMessage(content=VERIFY_SYSTEM), HumanMessage(content=human)])
+            tokens = _log_usage("verify", resp)
+            verification = _parse_verification(str(resp.content), has_fix=True)
+        except Exception:  # noqa: BLE001 — verification must never break a finished run
+            log.exception("fix verification failed; using inconclusive fallback")
+            verification = _parse_verification("", has_fix=True)
+
+        # Deterministic reconciliation: the LLM can't self-certify a fix that doesn't
+        # touch the code/service implicated by the root cause. Downgrade if so.
+        grounding = _fix_targets_cause(fix["text"], report)
+        verification["grounding"] = grounding
+        if verification["verdict"] == "verified" and not grounding["grounded"]:
+            verification["verdict"] = "inconclusive"
+            verification["confidence"] = "low"
+            verification["rationale"] = (
+                "[downgraded: the proposed fix does not reference the files/services "
+                "implicated by the root cause] " + verification.get("rationale", "")
+            ).strip()
+
+        report["verification"] = verification
+        report["postmortem"] = _render_postmortem(report, request)
+
+        # Bounded loop-back: an unverified fix gets ONE revision pass (guarded by the
+        # attempt cap AND the token budget) so the loop can never spin.
+        attempts = state.get("verify_attempts", 0)
+        can_retry = (
+            verification["verdict"] == "unverified"
+            and attempts < settings.copilot_verify_max_attempts
+            and not _over_token_budget(state.get("tokens_used", 0), settings)
+        )
+        if can_retry:
+            criteria = "; ".join(verification.get("resolution_criteria") or []) or (
+                "the incident's failing signal returns to normal"
+            )
+            feedback = (
+                "Your proposed fix does not resolve the root cause. "
+                f"{verification.get('rationale', '')} "
+                f"Revise the fix so it directly addresses the root cause and would satisfy: {criteria}."
+            ).strip()
+            return {
+                "verification": verification,
+                "report": report,
+                "feedback": feedback,
+                "verify_attempts": 1,
+                "status": "investigating",
+                "tokens_used": tokens,
+            }
+        return {"verification": verification, "report": report, "status": "done", "tokens_used": tokens}
+
+    return verify_node

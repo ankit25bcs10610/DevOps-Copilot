@@ -2005,6 +2005,31 @@ input {
 }
 .rca__actions { padding-left: 20px; list-style: decimal; }
 .rca__actions li { font-size: 13px; line-height: 1.55; color: var(--text); margin-bottom: 4px; }
+
+/* Fix verification block — verdict-tinted card mirroring the hypothesis styling. */
+.rca__verify {
+  border: 1px solid var(--border-soft);
+  border-left: 3px solid var(--text-faint);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.rca__verify--verified { border-left-color: var(--ok); }
+.rca__verify--unverified { border-left-color: var(--bad); }
+.rca__verify--inconclusive { border-left-color: var(--warn); }
+.rca__verify-top { display: flex; align-items: center; gap: 8px; }
+.rca__verify--verified .rca__hyp-icon { color: var(--ok); }
+.rca__verify--unverified .rca__hyp-icon { color: var(--bad); }
+.rca__verify--inconclusive .rca__hyp-icon { color: var(--warn); }
+.rca__verify-verdict { font-size: 13px; font-weight: 600; color: var(--text); flex: 1; }
+.rca__verify-rationale { font-size: 12.5px; line-height: 1.5; color: var(--text-dim); margin: 8px 0 0; }
+.rca__verify-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+  margin-top: 9px;
+}
 .rca__foot { border-top: 1px solid var(--border-soft); padding-top: 12px; }
 .rca__dl {
   display: inline-flex;

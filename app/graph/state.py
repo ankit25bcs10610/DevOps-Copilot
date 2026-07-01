@@ -43,5 +43,14 @@ class AgentState(TypedDict, total=False):
     # Drives the per-investigation cost kill-switch and is surfaced to the UI.
     tokens_used: Annotated[int, _add_int]
 
+    # Fix-verification verdict produced by the verify node when the report proposes
+    # a fix: does the proposed remediation address the root cause, what signal would
+    # confirm resolution, residual risks. None when verification didn't run.
+    verification: dict | None
+
+    # How many times the verify node has bounced the run back to the agent to revise
+    # a fix that missed the root cause. Bounds that loop (see copilot_verify_max_attempts).
+    verify_attempts: Annotated[int, _add_int]
+
     # Lifecycle marker, used by the API/CLI to know when to stop.
     status: Status

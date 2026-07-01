@@ -82,7 +82,8 @@ START → plan → agent ─┬─ approve call? → approval ─┬─ approved
                       │                             └─ rejected → agent
                       ├─ read call?    → tools → agent
                       └─ no call?      → reflect ─┬─ continue → agent
-                                                  └─ done     → report → END
+                                                  └─ done → report → verify ─┬─ unverified fix → agent (revise once)
+                                                                             └─ verified / done → END
 ```
 
 The cycle (`agent → tools → agent`) is what makes this an agent rather than a

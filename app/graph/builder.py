@@ -8,7 +8,9 @@ Wiring:
                        |        rejected -> agent                  |       |
                        +------------------ tools --(back to)-- agent       |
                        +-------------- reflect --(continue)-- agent        |
-                                              \--(done)--> END  <----------+
+                       |                       \--(done)--> report --> verify
+                       +--(verify: unverified fix, revise once)--/       |
+                                              (verified / done) --> END <-+
 
 The checkpointer persists state per `thread_id`, which is what makes the
 human-in-the-loop interrupt resumable across separate API calls.
@@ -26,13 +28,19 @@ from langgraph.prebuilt import ToolNode
 
 from app import audit, guardrails, redaction
 from app.config import get_settings
-from app.graph.edges import route_after_agent, route_after_approval, route_after_reflect
+from app.graph.edges import (
+    route_after_agent,
+    route_after_approval,
+    route_after_reflect,
+    route_after_verify,
+)
 from app.graph.nodes import (
     approval_node,
     make_agent_node,
     make_plan_node,
     make_reflect_node,
     make_report_node,
+    make_verify_node,
 )
 from app.graph.state import AgentState
 
@@ -84,6 +92,7 @@ def build_graph(tools, checkpointer):
     g.add_node("approval", approval_node)
     g.add_node("reflect", make_reflect_node())
     g.add_node("report", make_report_node())  # compile the structured RCA deliverable
+    g.add_node("verify", make_verify_node())  # assess the proposed fix; may revise once
 
     g.add_edge(START, "plan")
     g.add_edge("plan", "agent")
@@ -104,7 +113,14 @@ def build_graph(tools, checkpointer):
         route_after_reflect,
         {"agent": "agent", "report": "report"},
     )
-    g.add_edge("report", END)
+    # After the RCA is compiled, verify the proposed fix. verify either ends the run
+    # or bounces an unverified fix back to the agent (bounded) to revise it.
+    g.add_edge("report", "verify")
+    g.add_conditional_edges(
+        "verify",
+        route_after_verify,
+        {"agent": "agent", END: END},
+    )
 
     return g.compile(checkpointer=checkpointer)
 
