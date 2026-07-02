@@ -186,3 +186,48 @@ def test_envelope_cross_dek_decrypt_fails():
 def test_postgres_url_rejected_clearly():
     with pytest.raises(RuntimeError):
         TenantStore("postgresql://example/db")
+
+
+# --- DEK rotation + crypto-shred (envelope encryption) --------------------- #
+def test_rotate_dek_pure_helper():
+    pytest.importorskip("cryptography")
+    from app import secrets_vault as v
+
+    wrapped = v.new_wrapped_dek()
+    tokens = {"DD_API_KEY": v.encrypt_with(wrapped, "supersecret")}
+    new_wrapped, rekeyed = v.rotate_dek(tokens, wrapped)
+    assert new_wrapped != wrapped
+    assert v.decrypt_with(new_wrapped, rekeyed["DD_API_KEY"]) == "supersecret"
+
+
+def test_store_rotate_org_dek_preserves_secrets(tmp_path):
+    pytest.importorskip("cryptography")
+    s = _store(tmp_path)
+
+    async def scenario():
+        org = await s.create_org("Acme")
+        await s.set_integration_secret(org.id, "DD_API_KEY", "supersecret")
+        before = await s._wrapped_dek(org.id)
+        assert await s.rotate_org_dek(org.id) is True
+        after = await s._wrapped_dek(org.id)
+        assert after and after != before                      # DEK actually rotated
+        assert await s.get_integration_secret(org.id, "DD_API_KEY") == "supersecret"  # still readable
+        assert await s.rotate_org_dek("nope") is False        # unknown org
+
+    _run(scenario())
+
+
+def test_store_crypto_shred_makes_secrets_unrecoverable(tmp_path):
+    pytest.importorskip("cryptography")
+    s = _store(tmp_path)
+
+    async def scenario():
+        org = await s.create_org("Acme")
+        await s.set_integration_secret(org.id, "DD_API_KEY", "supersecret")
+        assert await s.crypto_shred_org(org.id) is True
+        assert await s._wrapped_dek(org.id) == ""             # DEK erased
+        assert await s.get_integration_secret(org.id, "DD_API_KEY") is None  # secret gone
+        assert await s.count_integrations(org.id) == 0
+        assert await s.crypto_shred_org("nope") is False      # unknown org
+
+    _run(scenario())

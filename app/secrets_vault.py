@@ -77,3 +77,16 @@ def encrypt_with(wrapped_dek: str, plaintext: str) -> str:
 def decrypt_with(wrapped_dek: str, token: str) -> str:
     """Decrypt a token produced by encrypt_with() for the same wrapped DEK."""
     return _dek_fernet(wrapped_dek).decrypt(token.encode()).decode()
+
+
+def rotate_dek(tokens: dict[str, str], old_wrapped_dek: str) -> tuple[str, dict[str, str]]:
+    """Rotate a tenant's DEK: decrypt every token under the OLD DEK, mint a fresh
+    wrapped DEK, and re-encrypt everything under it. Returns (new_wrapped_dek,
+    re-encrypted tokens). Limits the blast radius of a leaked DEK and lets a tenant
+    re-key on demand. Pure over its inputs (no store), so it's unit-testable."""
+    new_wrapped = new_wrapped_dek()
+    out: dict[str, str] = {}
+    for name, tok in tokens.items():
+        plain = decrypt_with(old_wrapped_dek, tok) if old_wrapped_dek else decrypt(tok)
+        out[name] = encrypt_with(new_wrapped, plain)
+    return new_wrapped, out
