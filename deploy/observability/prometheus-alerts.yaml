@@ -1,0 +1,40 @@
+# Prometheus alert rules for DevOps Copilot agent SLOs.
+# Scrape target: GET /metrics/slo (Prometheus exposition).
+groups:
+  - name: devops-copilot-slo
+    rules:
+      - alert: CopilotHighFailureRate
+        expr: |
+          rate(copilot_investigations_failed_total[15m])
+            / clamp_min(rate(copilot_investigations_total[15m]), 1e-9) > 0.1
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Copilot investigation failure rate > 10% (15m)"
+
+      - alert: CopilotHighAbstentionRate
+        expr: |
+          rate(copilot_investigations_abstained_total[30m])
+            / clamp_min(rate(copilot_investigations_total[30m]), 1e-9) > 0.5
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: "Copilot abstaining on >50% of investigations (30m) — evidence/tooling gap?"
+
+      - alert: CopilotSlowInvestigations
+        # p90-ish via histogram: >20% of runs over 60s.
+        expr: |
+          (rate(copilot_investigation_latency_seconds_count[15m])
+            - rate(copilot_investigation_latency_seconds_bucket{le="60"}[15m]))
+            / clamp_min(rate(copilot_investigation_latency_seconds_count[15m]), 1e-9) > 0.2
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "Copilot investigations slow: >20% take longer than 60s (15m)"
+
+      - alert: CopilotTokenSpendSpike
+        expr: rate(copilot_tokens_total[1h]) > 2 * (rate(copilot_tokens_total[1h] offset 1d))
+        for: 1h
+        labels: { severity: warning }
+        annotations:
+          summary: "Copilot token spend > 2x same-hour-yesterday baseline"

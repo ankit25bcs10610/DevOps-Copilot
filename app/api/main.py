@@ -196,7 +196,7 @@ class _ConfigGate:
 _gate = _ConfigGate()
 
 # Paths that bypass auth AND the limits middleware (probes + CORS preflight).
-_OPEN_PATHS = frozenset({"/healthz", "/readyz"})
+_OPEN_PATHS = frozenset({"/healthz", "/readyz", "/metrics/slo"})
 
 # --- In-memory per-IP fixed-window rate limiter (single-instance only) ---
 # {ip: (window_start_epoch, count)}. Good enough for one process; a multi-instance
@@ -486,6 +486,20 @@ async def _meter_and_spend(tokens: int, idem: str = "") -> None:
     fleet-wide spend counter."""
     await metering.record_investigation(tokens, idem=idem)
     await _record_spend(tokens)
+
+
+def _record_slo(result: Any, latency_s: float) -> None:
+    """Record a completed investigation to the SLO metrics (best-effort)."""
+    try:
+        from app.slo_metrics import metrics
+        report = result.report or {}
+        abstained = bool(report.get("abstained"))
+        # "success" = produced a report and didn't error (abstention still counts as
+        # a healthy, honest outcome).
+        success = bool(report) or bool(result.final_text)
+        metrics().record(latency_s, result.tokens_used, success, abstained)
+    except Exception:  # noqa: BLE001 — metrics must never break a request
+        log.debug("SLO metric record failed", exc_info=True)
 
 
 async def quota_gate() -> None:
@@ -883,11 +897,13 @@ async def chat(req: ChatRequest) -> ChatResponse:
                     "the pending action (POST /approve) before sending a new message.",
                 )
             _AWAITING.discard(tid)
+            _t0 = time.monotonic()
             result = await session.ask(req.message)
             if result.status == "awaiting_approval":
                 _AWAITING.add(tid)
             elif result.status == "completed":
                 await _meter_and_spend(result.tokens_used)
+                _record_slo(result, time.monotonic() - _t0)
     except HTTPException:
         raise  # 409/4xx should surface as real HTTP errors, not a 200 error body
     except Exception as exc:  # noqa: BLE001 — surface a clean error to the UI
@@ -1081,6 +1097,16 @@ async def approve_stream(req: ApproveRequest):
 async def metrics() -> dict:
     """Real metric series + error summary from the active logs/metrics source."""
     return metrics_source.read_all()
+
+
+@app.get("/metrics/slo")
+async def slo_metrics_endpoint():
+    """Agent SLO metrics in Prometheus exposition format (throughput, success/abstention,
+    token cost, latency histogram) — scrape into Prometheus/Grafana."""
+    from fastapi.responses import PlainTextResponse
+
+    from app.slo_metrics import metrics as slo
+    return PlainTextResponse(slo().render(), media_type="text/plain; version=0.0.4")
 
 
 @app.get("/usage")
