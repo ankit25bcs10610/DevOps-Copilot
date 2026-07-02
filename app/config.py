@@ -213,6 +213,14 @@ class Settings(BaseSettings):
     # score each concurrently against the observed evidence and re-rank them, so a
     # weakly-supported top hypothesis can't win by ordering alone. true (default).
     copilot_parallel_hypotheses: bool = True
+    # Resilience: bounded retries with exponential backoff + a circuit breaker around
+    # each LLM call, so a transient 429/5xx/timeout doesn't fail an investigation and
+    # a dead provider is stopped being hammered. 1 disables retries.
+    copilot_llm_retries: int = 3
+    # Optional cross-provider failover: when the primary provider stays unavailable,
+    # retry the call on this provider (one of anthropic|openai|gemini|groq|deepseek).
+    # Empty = no failover. Needs the fallback provider's key configured.
+    copilot_fallback_provider: str = ""
     # Progressive-autonomy remediation: apply a REVERSIBLE fix, watch the signal, and
     # auto-revert on regression. Mutates real infra, so DOUBLY gated: OFF by default,
     # and DRY-RUN by default even when enabled — an operator must set both to let it

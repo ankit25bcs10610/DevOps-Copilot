@@ -81,3 +81,71 @@ def test_cached_system_disabled_is_plain_string_even_on_anthropic(monkeypatch):
     finally:
         runtime.reset()
         cfg.get_settings.cache_clear()
+
+
+# --- resilience wrapper (retry / breaker / failover) ----------------------- #
+def test_resilient_llm_passthrough_on_success(monkeypatch):
+    from app.llm import _ResilientLLM
+
+    class _Inner:
+        def invoke(self, msgs, *a, **k):
+            return "ok"
+
+    monkeypatch.setattr(cfg.get_settings(), "copilot_llm_retries", 3)
+    assert _ResilientLLM(_Inner(), "m", False).invoke(["hi"]) == "ok"
+
+
+def test_resilient_llm_retries_then_succeeds(monkeypatch):
+    from app.llm import _ResilientLLM
+
+    calls = {"n": 0}
+
+    class _Flaky:
+        def invoke(self, msgs, *a, **k):
+            calls["n"] += 1
+            if calls["n"] < 2:
+                raise RuntimeError("429 rate limit")
+            return "recovered"
+
+    # no-op sleep so the test is instant
+    monkeypatch.setattr("app.resilience.time.sleep", lambda _s: None)
+    monkeypatch.setattr(cfg.get_settings(), "copilot_llm_retries", 3)
+    monkeypatch.setattr(cfg.get_settings(), "copilot_fallback_provider", "")
+    assert _ResilientLLM(_Flaky(), "m", False).invoke(["hi"]) == "recovered"
+    assert calls["n"] == 2
+
+
+def test_resilient_llm_fails_over_to_secondary_provider(monkeypatch):
+    from app import llm as llm_mod
+    from app.llm import _ResilientLLM
+
+    runtime.reset()
+    runtime.set_model("anthropic", "k", "", "")
+
+    class _DeadPrimary:
+        def invoke(self, msgs, *a, **k):
+            raise RuntimeError("503 service unavailable")
+
+    class _Fallback:
+        def invoke(self, msgs, *a, **k):
+            return "from-fallback"
+
+    monkeypatch.setattr(cfg.get_settings(), "copilot_llm_retries", 1)  # no retry delay
+    monkeypatch.setattr(cfg.get_settings(), "copilot_fallback_provider", "openai")
+    monkeypatch.setattr(llm_mod, "_build_fallback", lambda *a, **k: _Fallback())
+    assert _ResilientLLM(_DeadPrimary(), "m", False).invoke(["hi"]) == "from-fallback"
+    runtime.reset()
+
+
+def test_resilient_llm_bind_tools_stays_wrapped():
+    from app.llm import _ResilientLLM
+
+    class _Inner:
+        def bind_tools(self, tools, **k):
+            return self
+
+        def invoke(self, msgs, *a, **k):
+            return "ok"
+
+    wrapped = _ResilientLLM(_Inner(), "m", False).bind_tools([])
+    assert isinstance(wrapped, _ResilientLLM)
