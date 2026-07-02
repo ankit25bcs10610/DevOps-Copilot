@@ -38,6 +38,24 @@ export interface Hypothesis {
 
 export type VerifyVerdict = "verified" | "unverified" | "inconclusive" | "no_fix_proposed";
 
+export type SandboxVerdict =
+  | "resolved"
+  | "not_resolved"
+  | "no_repro"
+  | "patch_failed"
+  | "no_patch"
+  | "error";
+
+// Sandbox counterfactual result: the proposed patch applied to a throwaway repo
+// copy and a reproducer run before/after (set server-side by the verify node).
+export interface Sandbox {
+  verdict: SandboxVerdict;
+  detail: string;
+  applied?: boolean;
+  baseline_failed?: boolean | null;
+  patched_passed?: boolean | null;
+}
+
 // Fix-verification result (set server-side by the verify node): does the proposed
 // remediation address the root cause, and what signal confirms resolution.
 export interface Verification {
@@ -47,6 +65,7 @@ export interface Verification {
   resolution_criteria: string[];
   residual_risks: string[];
   rationale: string;
+  sandbox?: Sandbox;
 }
 
 export interface RcaReport {

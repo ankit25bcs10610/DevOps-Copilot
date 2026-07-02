@@ -443,6 +443,64 @@ def test_verify_node_downgrades_verified_when_fix_ungrounded(monkeypatch):
     assert out["report"]["verification"]["grounding"]["grounded"] is False
 
 
+def test_extract_proposed_fix_captures_patch():
+    state = {"messages": [
+        HumanMessage(content="why?"),
+        _pr_call(title="Guard null", patch="--- a/checkout.js\n+++ b/checkout.js\n@@\n-x\n+y\n"),
+    ]}
+    fix = _extract_proposed_fix(state, {"recommended_actions": []})
+    assert fix["has_fix"] and fix["patch"].startswith("--- a/checkout.js")
+
+
+def test_verify_node_sandbox_proof_overrides_llm(monkeypatch):
+    """A sandbox 'resolved' verdict upgrades an unsure LLM verdict to verified."""
+    from app.config import get_settings
+    from app.graph import nodes
+    from app.graph.nodes import make_verify_node
+
+    _verify_llm(monkeypatch, '{"verdict":"inconclusive","confidence":"low","rationale":"unsure"}')
+    monkeypatch.setattr(nodes, "run_counterfactual",
+                        lambda *a, **k: {"verdict": "resolved", "detail": "fail→pass", "applied": True})
+    monkeypatch.setattr(get_settings(), "copilot_sandbox_verify", True)
+    node = make_verify_node()
+    state = {
+        "messages": [HumanMessage(content="why?"),
+                     _pr_call(title="Guard null in applyDiscount",
+                              patch="--- a/checkout.js\n+++ b/checkout.js\n")],
+        "report": dict(_CAUSE_REPORT),
+        "verify_attempts": 0,
+    }
+    out = node(state)
+    assert out["status"] == "done"
+    assert out["report"]["verification"]["verdict"] == "verified"
+    assert out["report"]["verification"]["confidence"] == "high"
+    assert out["report"]["verification"]["sandbox"]["verdict"] == "resolved"
+
+
+def test_verify_node_sandbox_disproof_forces_loopback(monkeypatch):
+    """A sandbox 'not_resolved' verdict overrides an optimistic LLM and bounces back."""
+    from app.config import get_settings
+    from app.graph import nodes
+    from app.graph.nodes import make_verify_node
+
+    _verify_llm(monkeypatch, '{"verdict":"verified","confidence":"high","rationale":"looks right"}')
+    monkeypatch.setattr(nodes, "run_counterfactual",
+                        lambda *a, **k: {"verdict": "not_resolved", "detail": "still fails"})
+    monkeypatch.setattr(get_settings(), "copilot_sandbox_verify", True)
+    node = make_verify_node()
+    state = {
+        "messages": [HumanMessage(content="why?"),
+                     _pr_call(title="Guard null in applyDiscount",
+                              patch="--- a/checkout.js\n+++ b/checkout.js\n")],
+        "report": dict(_CAUSE_REPORT),
+        "verify_attempts": 0,
+    }
+    out = node(state)
+    assert out["status"] == "investigating"  # bounced back to revise
+    assert out["report"]["verification"]["verdict"] == "unverified"
+    assert out["report"]["verification"]["sandbox"]["verdict"] == "not_resolved"
+
+
 def test_verify_node_no_fix_finalizes_without_calling_llm(monkeypatch):
     from app.graph import nodes
     from app.graph.nodes import make_verify_node

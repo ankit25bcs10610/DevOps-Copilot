@@ -23,6 +23,7 @@ from app.graph.prompts import (
     REPORT_SYSTEM,
     VERIFY_SYSTEM,
 )
+from app.graph.sandbox import run_counterfactual
 from app.graph.state import AgentState
 from app.llm import cached_system, get_llm
 
@@ -576,6 +577,11 @@ def _render_postmortem(report: dict, request: str) -> str:
         )
         if verification.get("rationale"):
             lines.append(f"- {verification['rationale']}")
+        sandbox = verification.get("sandbox")
+        if sandbox and sandbox.get("verdict") not in (None, "no_patch"):
+            lines.append(
+                f"- **Sandbox counterfactual:** `{sandbox.get('verdict')}` — {sandbox.get('detail', '')}"
+            )
         criteria = verification.get("resolution_criteria") or []
         if criteria:
             lines.append("- **Resolution criteria — confirm before closing:**")
@@ -693,13 +699,18 @@ def _extract_proposed_fix(state: AgentState, report: dict) -> dict:
     falls back to the report's recommended actions when a root cause was established.
     Pure + testable. Returns {has_fix, source, text}."""
     pr_parts: list[str] = []
+    patch = ""
     for m in state.get("messages", []):
         if isinstance(m, AIMessage) and m.tool_calls:
             for c in m.tool_calls:
                 if c.get("name") != "create_pull_request":
                     continue
                 args = c.get("args") or {}
-                for k in ("title", "body", "description", "diff", "files", "branch", "head"):
+                # A machine-applicable patch (unified diff) is the strongest fix
+                # artifact — it's what the sandbox counterfactual actually runs.
+                if args.get("patch") and isinstance(args["patch"], str):
+                    patch = args["patch"]
+                for k in ("title", "body", "description", "diff", "patch", "files", "branch", "head"):
                     v = args.get(k)
                     if v:
                         pr_parts.append(f"{k}: {v if isinstance(v, str) else json.dumps(v, default=str)}")
@@ -708,10 +719,10 @@ def _extract_proposed_fix(state: AgentState, report: dict) -> dict:
         text = "\n".join(pr_parts)
         if actions:
             text += "\nRecommended actions:\n" + "\n".join(actions)
-        return {"has_fix": True, "source": "pr", "text": text[:2500]}
+        return {"has_fix": True, "source": "pr", "text": text[:2500], "patch": patch}
     if report.get("root_cause") and actions:
-        return {"has_fix": True, "source": "actions", "text": "\n".join(actions)[:2000]}
-    return {"has_fix": False, "source": "none", "text": ""}
+        return {"has_fix": True, "source": "actions", "text": "\n".join(actions)[:2000], "patch": ""}
+    return {"has_fix": False, "source": "none", "text": "", "patch": ""}
 
 
 def _fix_targets_cause(fix_text: str, report: dict) -> dict:
@@ -827,6 +838,31 @@ def make_verify_node():
                 "[downgraded: the proposed fix does not reference the files/services "
                 "implicated by the root cause] " + verification.get("rationale", "")
             ).strip()
+
+        # Sandbox counterfactual: if enabled and the agent attached a patch, PROVE the
+        # fix by applying it to a throwaway repo copy and running a reproducer. A
+        # hard FAIL→PASS result overrides the LLM's opinion in either direction.
+        if settings.copilot_sandbox_verify and fix.get("patch"):
+            sandbox = run_counterfactual(
+                settings.repo_path,
+                fix["patch"],
+                settings.copilot_sandbox_cmd,
+                settings.copilot_sandbox_timeout_s,
+            )
+            verification["sandbox"] = sandbox
+            if sandbox["verdict"] == "resolved":
+                verification["verdict"] = "verified"
+                verification["confidence"] = "high"
+                verification["rationale"] = (
+                    "[sandbox-proven: reproducer failed before the patch and passes after it] "
+                    + verification.get("rationale", "")
+                ).strip()
+            elif sandbox["verdict"] == "not_resolved":
+                verification["verdict"] = "unverified"
+                verification["rationale"] = (
+                    "[sandbox-disproven: reproducer still fails after applying the patch] "
+                    + verification.get("rationale", "")
+                ).strip()
 
         report["verification"] = verification
         report["postmortem"] = _render_postmortem(report, request)

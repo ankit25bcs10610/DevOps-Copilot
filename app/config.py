@@ -168,6 +168,17 @@ class Settings(BaseSettings):
     # fix that doesn't address the root cause. Bounds the loop; 0 disables the
     # bounce (verification still annotates the report). Default 1 (single revision).
     copilot_verify_max_attempts: int = 1
+    # Sandbox counterfactual: when the agent attaches a machine-applicable `patch`
+    # to its PR, apply it to a throwaway copy of the target repo and run a reproducer
+    # to PROVE the fix resolves the incident. Executes the model's patch, so OFF by
+    # default. See app/graph/sandbox.py.
+    copilot_sandbox_verify: bool = False
+    # Reproducer command the sandbox runs (in the temp repo copy) before and after
+    # applying the patch — a FAIL→PASS transition proves the fix. Operator-set, never
+    # model-supplied. Defaults to the bundled sample_repo's node reproducer.
+    copilot_sandbox_cmd: str = "node checkout.test.js"
+    # Wall-clock timeout (seconds) for each sandbox subprocess run.
+    copilot_sandbox_timeout_s: int = 30
 
     @field_validator("copilot_provider")
     @classmethod
