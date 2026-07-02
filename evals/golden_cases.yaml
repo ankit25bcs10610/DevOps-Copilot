@@ -1,0 +1,14 @@
+# Golden-trajectory cases — the deterministic replay set gated in CI (a curated
+# subset of testcases.yaml). Keep these stable; re-record the cassette whenever you
+# intentionally change a prompt, the model, the ranker, or a tool's behavior.
+#
+# The committed cassette (evals/cassettes/golden.json) was seeded OFFLINE with a
+# deterministic scripted agent (evals/record_golden_offline.py) so the gate is live
+# without a paid key. Re-record from a live LLM to capture real model trajectories:
+#   COPILOT_REPLAY_MODE=record uv run python -m evals.run_golden --record
+
+- name: which_services
+  question: "Which services are emitting logs right now?"
+  expect_keywords: ["checkout-svc", "inventory-svc"]
+  expect_tools_any: ["list_services", "search_logs"]
+  expect_tools_any_2: ["list_services", "search_logs"]

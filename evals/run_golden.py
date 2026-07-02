@@ -32,6 +32,9 @@ from rich.table import Table
 
 console = Console()
 DEFAULT_CASSETTE = "evals/cassettes/golden.json"
+# The curated golden replay set (a stable subset of testcases.yaml). Recording and
+# replay use the SAME file so the cassette and the gate never drift apart.
+DEFAULT_CASES = "evals/golden_cases.yaml"
 
 
 def main() -> None:
@@ -39,6 +42,7 @@ def main() -> None:
     parser.add_argument("--record", action="store_true",
                         help="record cassettes from a live LLM (needs an API key)")
     parser.add_argument("--cassette", default=os.environ.get("COPILOT_CASSETTE_PATH", DEFAULT_CASSETTE))
+    parser.add_argument("--cases", default=os.environ.get("COPILOT_GOLDEN_CASES", DEFAULT_CASES))
     args = parser.parse_args()
 
     os.environ["COPILOT_REPLAY_MODE"] = "record" if args.record else "replay"
@@ -58,7 +62,7 @@ def main() -> None:
         )
         sys.exit(0)  # nothing to gate yet — not a failure
 
-    cases = yaml.safe_load((Path(__file__).parent / "testcases.yaml").read_text())
+    cases = yaml.safe_load(Path(args.cases).read_text())
     mode = "RECORD" if args.record else "REPLAY"
     console.print(f"[bold]{mode}: {len(cases)} golden case(s) → {cassette}[/bold]\n")
 

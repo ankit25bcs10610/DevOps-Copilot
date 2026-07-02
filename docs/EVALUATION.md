@@ -26,15 +26,28 @@ non-deterministic**. A VCR-style **cassette layer** (`app/replay.py`) records ea
 response keyed by a normalized message hash (ids/timestamps excluded), so a whole
 investigation replays bit-for-bit with **no API key and no network**.
 
+The replay set is `evals/golden_cases.yaml` (a stable subset of `testcases.yaml`);
+recording and replay share it so the cassette and the gate never drift.
+
 ```bash
-# 1) record once, with a live key
-COPILOT_REPLAY_MODE=record uv run python -m evals.run_golden --record
-# 2) replay forever, offline — fails (exit 1) on any tool-use / verdict / path-safety regression
+# Replay forever, offline — fails (exit 1) on any tool-use / verdict / path-safety regression
 uv run python -m evals.run_golden
 ```
 
-CI runs the replay gate automatically once a cassette is committed under
-`evals/cassettes/`. See [`evals/cassettes/README.md`](../evals/cassettes/README.md).
+The committed cassette (`evals/cassettes/golden.json`) is **seeded offline with a
+deterministic scripted agent** (`evals/record_golden_offline.py`), so the gate is
+**live in CI without a paid key** — it runs on every push. This scripted seed locks
+in graph routing, tool wiring, redaction/guardrails, the scorers, and RCA parsing;
+re-record from a live LLM to also lock in real model trajectories (identical format):
+
+```bash
+COPILOT_REPLAY_MODE=record uv run python -m evals.run_golden --record   # needs a key
+```
+
+Fixing this exposed a real determinism bug — LangChain stamps random `lc_<uuid>` ids
+onto tool-result content blocks, which broke the cassette key; `app/replay.py` now
+scrubs them (regression-tested in `tests/test_replay.py`).
+See [`evals/cassettes/README.md`](../evals/cassettes/README.md).
 
 ## Prompt-injection red-team gate (offline, no key)
 

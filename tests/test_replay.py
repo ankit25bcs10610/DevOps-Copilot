@@ -40,6 +40,17 @@ def test_key_changes_with_content_and_tools():
     assert base != replay.cassette_key("other", [HumanMessage(content="hi")], [])
 
 
+def test_key_ignores_volatile_content_block_ids():
+    """A tool result stringified with langchain's random lc_<uuid> content-block ids
+    must hash identically across runs (otherwise replay never matches). Regression
+    test for the golden-cassette determinism fix."""
+    a = HumanMessage(content="[{'type': 'text', 'text': 'checkout-svc', "
+                     "'id': 'lc_38c025a8-6ffa-4023-88a0-cd927c084d36'}]")
+    b = HumanMessage(content="[{'type': 'text', 'text': 'checkout-svc', "
+                     "'id': 'lc_ea1257da-079e-48e2-984f-b2d40d1cff55'}]")
+    assert replay.cassette_key("m", [a], []) == replay.cassette_key("m", [b], [])
+
+
 def test_record_then_replay_roundtrip(tmp_path, monkeypatch):
     monkeypatch.setenv("COPILOT_CASSETTE_PATH", str(tmp_path / "c.json"))
 

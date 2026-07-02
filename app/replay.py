@@ -24,12 +24,19 @@ import hashlib
 import json
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Any
 
 from langchain_core.messages import BaseMessage, message_to_dict, messages_from_dict
 
 log = logging.getLogger("devcopilot.replay")
+
+# LangChain stamps a fresh random id (``lc_<uuid>``) onto content blocks — e.g. when
+# a tool returns a list, each item becomes a block carrying its own id. Those ids are
+# non-semantic and change every run, so they must be scrubbed from the cassette KEY
+# or replay never matches. (The stored response is untouched; only the key is.)
+_VOLATILE_ID = re.compile(r"lc_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 
 
 def mode() -> str:
@@ -54,10 +61,11 @@ def _normalize_message(m: BaseMessage) -> dict:
         key=lambda c: json.dumps(c, sort_keys=True, default=str),
     )
     content = m.content if isinstance(m.content, str) else json.dumps(m.content, sort_keys=True, default=str)
+    content = _VOLATILE_ID.sub("lc_", content)  # scrub run-varying content-block ids
     return {
         "type": m.__class__.__name__,
         "content": content,
-        "tool_calls": norm_tc,
+        "tool_calls": _VOLATILE_ID.sub("lc_", json.dumps(norm_tc, sort_keys=True, default=str)),
         "tool_call_id": getattr(m, "tool_call_id", None),
         "name": getattr(m, "name", None),
     }
