@@ -192,6 +192,11 @@ class Settings(BaseSettings):
     # Where learned incidents accumulate (JSON). Kept separate from the bundled
     # demo corpus so the shipped fixture is never mutated. Defaults to project root.
     copilot_learned_corpus: str = ""
+    # Adversarial RCA critique: after the report is compiled, a Prosecutor tries to
+    # refute the root cause and a Defender rebuts using only observed evidence; a
+    # deterministic judge downgrades/abstains when a serious objection stands. Cuts
+    # confident-but-wrong RCAs. Two fast-model calls; true (default) | false.
+    copilot_adversarial_critique: bool = True
 
     @field_validator("copilot_provider")
     @classmethod

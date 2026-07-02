@@ -19,7 +19,9 @@ from app import incident_memory, policy, replay
 from app.config import get_settings
 from app.graph.prompts import (
     AGENT_SYSTEM,
+    DEFENDER_SYSTEM,
     PLANNER_SYSTEM,
+    PROSECUTOR_SYSTEM,
     REFLECT_SYSTEM,
     REPORT_SYSTEM,
     VERIFY_SYSTEM,
@@ -558,6 +560,12 @@ def _render_postmortem(report: dict, request: str) -> str:
         "## What was investigated",
         f"> Triggering request: {request.strip()[:500]}" if request.strip() else "> —",
     ]
+    critique = report.get("critique")
+    if critique and critique.get("verdict") and critique["verdict"] != "upheld":
+        lines += ["", "## Adversarial review"]
+        lines.append(f"- **Verdict:** root cause _{critique['verdict']}_ by the prosecutor/defender panel")
+        for s in critique.get("standing_objections") or []:
+            lines.append(f"    - unrebutted ({s.get('severity', 'low')}): {s.get('claim', '')}")
     hyps = report.get("hypotheses") or []
     if hyps:
         lines += ["", "## Hypotheses considered"]
@@ -626,12 +634,157 @@ class _RcaSchema(BaseModel):
     recommended_actions: list[str] = Field(default_factory=list)
 
 
+# --------------------------------------------------------------------------- #
+# Adversarial RCA critique — a Prosecutor tries to refute the root cause; a
+# Defender rebuts using only observed evidence; a deterministic judge downgrades
+# or abstains when a serious objection stands unrebutted. Cuts confident-but-wrong
+# RCAs (LLMs are positively biased). Parsing + judging are pure/testable; the two
+# LLM calls are gated to replay-off so the golden cassette layer stays symmetric.
+# --------------------------------------------------------------------------- #
+def _extract_json_obj(text: str) -> dict:
+    """Best-effort: pull the first JSON object out of a model reply. {} on failure."""
+    if not text or "{" not in text:
+        return {}
+    start, end = text.find("{"), text.rfind("}")
+    if start == -1 or end <= start:
+        return {}
+    try:
+        data = json.loads(text[start : end + 1])
+    except (ValueError, TypeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _parse_objections(text: str) -> list[dict]:
+    raw = _extract_json_obj(text).get("objections")
+    out: list[dict] = []
+    if isinstance(raw, list):
+        for o in raw:
+            if not isinstance(o, dict):
+                continue
+            claim = str(o.get("claim", "")).strip()
+            if not claim:
+                continue
+            sev = str(o.get("severity", "")).strip().lower()
+            out.append({"claim": claim[:300], "severity": sev if sev in _CONFIDENCE else "low"})
+            if len(out) >= 5:
+                break
+    return out
+
+
+def _parse_rebuttals(text: str) -> list[dict]:
+    raw = _extract_json_obj(text).get("rebuttals")
+    out: list[dict] = []
+    if isinstance(raw, list):
+        for r in raw:
+            if not isinstance(r, dict):
+                continue
+            out.append(
+                {
+                    "objection": str(r.get("objection", "")).strip()[:300],
+                    "rebutted": bool(r.get("rebutted")),
+                    "evidence": str(r.get("evidence", "")).strip()[:300],
+                }
+            )
+    return out
+
+
+def _judge_critique(objections: list[dict], rebuttals: list[dict]) -> dict:
+    """Deterministic verdict: an objection stands if its (index-aligned) rebuttal is
+    missing or rebutted=false. A standing HIGH objection refutes the RCA; a standing
+    MEDIUM weakens it; otherwise it's upheld. Pure + testable."""
+    standing: list[dict] = []
+    for i, o in enumerate(objections):
+        rebutted = rebuttals[i].get("rebutted", False) if i < len(rebuttals) else False
+        if not rebutted:
+            standing.append({"claim": o.get("claim", ""), "severity": o.get("severity", "low")})
+    if any(s["severity"] == "high" for s in standing):
+        verdict = "refuted"
+    elif any(s["severity"] == "medium" for s in standing):
+        verdict = "weakened"
+    else:
+        verdict = "upheld"
+    return {
+        "verdict": verdict,
+        "standing_objections": standing[:5],
+        "objection_count": len(objections),
+        "standing_count": len(standing),
+    }
+
+
+def _adversarial_critique(llm, request: str, report: dict, digest: str) -> dict:
+    """Run Prosecutor → Defender → deterministic judge over the RCA. Returns
+    {verdict, objections, rebuttals, standing_objections, tokens}. Never raises."""
+    result: dict = {
+        "verdict": "upheld", "objections": [], "rebuttals": [],
+        "standing_objections": [], "tokens": 0,
+    }
+    rc = (report.get("root_cause") or "").strip()
+    if not rc:
+        return result
+    ev = digest or "(none recorded)"
+    tokens = 0
+    try:
+        pros = llm.invoke([
+            SystemMessage(content=PROSECUTOR_SYSTEM),
+            HumanMessage(content=f"Root cause:\n{rc}\n\nSummary:\n{report.get('summary', '')}\n\nEvidence:\n{ev}"),
+        ])
+        tokens += _log_usage("prosecutor", pros)
+        objections = _parse_objections(str(pros.content))
+    except Exception:  # noqa: BLE001 — critique must never break a finished run
+        log.warning("prosecutor critique failed (non-fatal)", exc_info=True)
+        return result
+    if not objections:
+        result["tokens"] = tokens
+        return result  # nothing to refute — RCA stands
+    try:
+        obj_text = "\n".join(f"- ({o['severity']}) {o['claim']}" for o in objections)
+        dfn = llm.invoke([
+            SystemMessage(content=DEFENDER_SYSTEM),
+            HumanMessage(content=f"Root cause:\n{rc}\n\nEvidence:\n{ev}\n\nObjections:\n{obj_text}"),
+        ])
+        tokens += _log_usage("defender", dfn)
+        rebuttals = _parse_rebuttals(str(dfn.content))
+    except Exception:  # noqa: BLE001
+        log.warning("defender critique failed (non-fatal)", exc_info=True)
+        rebuttals = []  # unrebutted -> objections stand (conservative)
+    judged = _judge_critique(objections, rebuttals)
+    result.update(objections=objections, rebuttals=rebuttals, tokens=tokens, **judged)
+    return result
+
+
+_DOWNGRADE = {"high": "medium", "medium": "low", "low": "low"}
+
+
+def _apply_critique(report: dict, critique: dict) -> dict:
+    """Fold an adversarial verdict into the report's confidence. A refuted RCA
+    abstains; a weakened one drops a confidence notch. Pure + testable."""
+    report["critique"] = {
+        "verdict": critique["verdict"],
+        "objections": critique.get("objections", []),
+        "rebuttals": critique.get("rebuttals", []),
+        "standing_objections": critique.get("standing_objections", []),
+    }
+    if critique["verdict"] == "refuted":
+        report["calibrated_confidence"] = "low"
+        report["abstained"] = True
+        needs = list(report.get("needs") or [])
+        top = critique["standing_objections"][0]["claim"] if critique.get("standing_objections") else ""
+        needs.append(f"Adversarial review raised an unrebutted objection to the root cause: {top}")
+        report["needs"] = needs
+    elif critique["verdict"] == "weakened":
+        cur = report.get("calibrated_confidence") or report.get("confidence") or "low"
+        report["calibrated_confidence"] = _DOWNGRADE.get(cur, "low")
+    return report
+
+
 def make_report_node():
     """Node: compile the finished investigation into a structured RCA report +
     postmortem. Runs once when the investigation is done (after reflect)."""
     # Use the fast model: it's a synthesis-from-given-text task (cheap), and it
     # avoids the adaptive-thinking + forced-tool conflict on the main model.
     llm = get_llm(fast=True)
+    settings = get_settings()
 
     def report_node(state: AgentState) -> dict:
         request = _last_user_text(state)
@@ -679,6 +832,13 @@ def make_report_node():
                 report = _parse_report("", fallback_summary=final_answer)
         report = _calibrate_confidence(report)
         report = _verify_grounding(report, digest)  # deterministic critic pass
+        # Adversarial critique (LLM): prosecute → defend → judge, then fold the
+        # verdict into confidence. Gated to replay-off (two extra .invoke calls the
+        # cassette layer doesn't wrap) and to reports that actually name a cause.
+        if settings.copilot_adversarial_critique and replay.mode() == "off" and report.get("root_cause"):
+            critique = _adversarial_critique(llm, request, report, digest)
+            tokens += critique.get("tokens", 0)
+            report = _apply_critique(report, critique)
         report["postmortem"] = _render_postmortem(report, request)
         return {"report": report, "status": "done", "tokens_used": tokens}
 

@@ -72,6 +72,14 @@ export interface Verification {
   sandbox?: Sandbox;
 }
 
+export type CritiqueVerdict = "upheld" | "weakened" | "refuted";
+
+// Adversarial RCA critique (prosecutor/defender panel, set server-side).
+export interface Critique {
+  verdict: CritiqueVerdict;
+  standing_objections?: { claim: string; severity: Confidence }[];
+}
+
 export interface RcaReport {
   summary: string;
   severity: Severity;
@@ -88,6 +96,8 @@ export interface RcaReport {
   needs?: string[];
   // Fix verification (set server-side by the verify node).
   verification?: Verification;
+  // Adversarial critique (set server-side by the report node).
+  critique?: Critique;
 }
 
 export interface ChatResponse {
