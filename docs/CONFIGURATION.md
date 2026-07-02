@@ -29,6 +29,9 @@ UI** — those overrides are in-memory only, not persisted across restarts.
 | `COPILOT_SLO_POLL_INTERVAL_S` | `300` | SLO poller sweep cadence (seconds) |
 | `COPILOT_SLO_COOLDOWN_S` | `3600` | Per-service cooldown before re-opening an SLO investigation |
 | `COPILOT_PARALLEL_HYPOTHESES` | `true` | Concurrently score 2+ competing RCA hypotheses against evidence and re-rank |
+| `COPILOT_AUTONOMY` | `false` | Enable `POST /remediate` (apply reversible fix → watch → auto-revert). Off = 403 |
+| `COPILOT_AUTONOMY_DRYRUN` | `true` | Even when enabled, only simulate remediation unless set false |
+| `COPILOT_AUTONOMY_WATCH_S` | `60` | Seconds to watch the signal after a remediation before judging recovery |
 | `COPILOT_CHECKPOINT_DB` | `./copilot_checkpoints.sqlite` | SQLite path or a `postgres://…` URL |
 
 ## Data sources & connectors

@@ -144,3 +144,36 @@ def test_friendly_error_branches():
     assert "rate limit" in api._friendly_error(Exception("429 rate_limit")).lower()
     assert "key" in api._friendly_error(Exception("401 authentication error")).lower()
     assert "went wrong" in api._friendly_error(Exception("boom")).lower()
+
+
+# --- autonomous remediation (#4) ------------------------------------------ #
+def test_remediate_forbidden_when_autonomy_disabled(client):
+    r = client.post("/remediate", json={
+        "action": "rollback_deployment", "target": "checkout-svc", "confidence": "high"})
+    assert r.status_code == 403
+
+
+def test_remediate_rejects_non_reversible_action(client, monkeypatch):
+    monkeypatch.setenv("COPILOT_AUTONOMY", "true")
+    cfg.get_settings.cache_clear()
+    r = client.post("/remediate", json={
+        "action": "scale_deployment", "target": "checkout-svc", "confidence": "high"})
+    assert r.status_code == 400
+    assert "reversible" in r.json()["detail"]
+
+
+def test_remediate_dry_run_when_enabled(client, monkeypatch):
+    monkeypatch.setenv("COPILOT_AUTONOMY", "true")  # dry-run defaults on
+    cfg.get_settings.cache_clear()
+    r = client.post("/remediate", json={
+        "action": "restart_deployment", "target": "checkout-svc", "confidence": "high"})
+    assert r.status_code == 200
+    assert r.json()["status"] == "dry_run"
+
+
+def test_remediate_requires_high_confidence(client, monkeypatch):
+    monkeypatch.setenv("COPILOT_AUTONOMY", "true")
+    cfg.get_settings.cache_clear()
+    r = client.post("/remediate", json={
+        "action": "restart_deployment", "target": "checkout-svc", "confidence": "low"})
+    assert r.status_code == 400

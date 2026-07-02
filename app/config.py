@@ -213,6 +213,14 @@ class Settings(BaseSettings):
     # score each concurrently against the observed evidence and re-rank them, so a
     # weakly-supported top hypothesis can't win by ordering alone. true (default).
     copilot_parallel_hypotheses: bool = True
+    # Progressive-autonomy remediation: apply a REVERSIBLE fix, watch the signal, and
+    # auto-revert on regression. Mutates real infra, so DOUBLY gated: OFF by default,
+    # and DRY-RUN by default even when enabled — an operator must set both to let it
+    # act. Only reversible actions, only on a high-confidence investigation.
+    copilot_autonomy: bool = False
+    copilot_autonomy_dryrun: bool = True
+    # How long to watch the signal after applying a remediation before judging recovery.
+    copilot_autonomy_watch_s: int = 60
 
     @field_validator("copilot_provider")
     @classmethod
