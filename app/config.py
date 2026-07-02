@@ -136,6 +136,9 @@ class Settings(BaseSettings):
     # Stripe meter events; otherwise billing is local-ledger-only.
     stripe_api_key: str = ""
     stripe_meter_event: str = "investigation"
+    # Stripe webhook signing secret — verifies inbound subscription events at
+    # /webhooks/stripe (event → store.set_plan). Empty = the endpoint rejects (fails closed).
+    stripe_webhook_secret: str = ""
     # Supabase Auth SSO (optional). When SUPABASE_JWKS_URL is set, a Supabase-issued
     # JWT (Bearer) authenticates to the multi-tenant API, mapped to the user's org/
     # role membership. Verification uses only the PUBLIC JWKS — no Supabase secret.

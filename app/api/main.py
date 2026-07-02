@@ -1535,6 +1535,34 @@ async def pagerduty_webhook(request: Request):
     return {"status": "accepted", "incident": incident["id"]}
 
 
+@app.post("/webhooks/stripe")
+async def stripe_webhook(request: Request) -> dict:
+    """Stripe subscription events → tenant plan. Verifies the signature (fails closed
+    without STRIPE_WEBHOOK_SECRET) and maps created/updated/deleted to store.set_plan."""
+    import json as _json
+    import time as _time
+
+    from app import billing
+    s = get_settings()
+    raw = await request.body()
+    if not billing.verify_stripe_signature(
+        raw, request.headers.get("stripe-signature", ""), s.stripe_webhook_secret,
+        now=int(_time.time()),
+    ):
+        raise HTTPException(401, "Invalid Stripe signature.")
+    try:
+        event = _json.loads(raw)
+    except ValueError:
+        raise HTTPException(400, "Malformed Stripe event.") from None
+    mapping = billing.plan_from_stripe_event(event)
+    if mapping is None:
+        return {"status": "ignored", "type": event.get("type")}
+    org_id, plan = mapping
+    await tenant_auth.get_store().set_plan(org_id, plan)
+    audit.record("billing.plan_changed", org_id=org_id, plan=plan, via="stripe")
+    return {"status": "applied", "org_id": org_id, "plan": plan}
+
+
 @app.post("/webhooks/slack/interactions")
 async def slack_interactions(request: Request):
     """Slack interactive callback → map an Approve/Reject button to the resume."""
