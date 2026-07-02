@@ -17,12 +17,15 @@ error the UI surfaces.
 from __future__ import annotations
 
 import importlib
+import logging
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import SystemMessage
 
 from app import replay, runtime
 from app.config import get_settings
+
+log = logging.getLogger("devcopilot.llm")
 
 # Per-provider default models: (main, fast).
 _DEFAULTS = {
@@ -76,10 +79,83 @@ def get_llm(fast: bool = False, model: str | None = None) -> BaseChatModel:
         return replay.replay_model(model)
 
     key = runtime.provider_key()
-    # Build the real client, then wrap for record (no-op in off mode, so the
-    # production path is identical). `model` is the resolved id used in the cassette key.
+    # Build the real client, wrap it for resilience (retries + breaker + optional
+    # cross-provider failover), then for record. Resilience sits INSIDE the record
+    # wrapper so the cassette captures the final successful response. Replay never
+    # reaches here (early return above), so offline/deterministic paths are unaffected.
     built = _build(provider, model, key, fast)
-    return replay.wrap(built, model)
+    return replay.wrap(_resilient(built, model, fast), model)
+
+
+class _ResilientLLM:
+    """Wrap a chat model's `.invoke` with bounded retry + a circuit breaker, and
+    optional cross-provider failover. Passes `bind_tools`/`with_structured_output`
+    through, re-wrapping so the whole chain stays resilient. Only built for the real
+    (non-replay) path, so it never interferes with deterministic replay."""
+
+    def __init__(self, inner: BaseChatModel, model_id: str, fast: bool,
+                 breaker: "object | None" = None):
+        from app.resilience import CircuitBreaker
+
+        self._inner = inner
+        self._model_id = model_id
+        self._fast = fast
+        # One breaker per (model) wrapper instance; shared across bind_tools children.
+        self._breaker = breaker or CircuitBreaker(failure_threshold=5, reset_timeout=30.0)
+
+    def bind_tools(self, tools, **kwargs):
+        return _ResilientLLM(self._inner.bind_tools(tools, **kwargs), self._model_id,
+                             self._fast, self._breaker)
+
+    def invoke(self, messages, *args, **kwargs):
+        from app import resilience
+        from app.config import get_settings
+
+        settings = get_settings()
+        attempts = max(1, settings.copilot_llm_retries)
+
+        def _primary():
+            return self._breaker.call(lambda: self._inner.invoke(messages, *args, **kwargs))
+
+        try:
+            return resilience.retry_call(_primary, attempts=attempts)
+        except BaseException as exc:  # noqa: BLE001 — try failover before giving up
+            fb = settings.copilot_fallback_provider.strip().lower()
+            if fb and fb != runtime.provider() and resilience.is_retryable(exc):
+                log.warning("primary provider failing; failing over to '%s'", fb)
+                fallback = _build_fallback(fb, self._model_id, self._fast, getattr(self._inner, "_tools", None))
+                if fallback is not None:
+                    return fallback.invoke(messages, *args, **kwargs)
+            raise
+
+    def __getattr__(self, name):
+        inner = self.__dict__.get("_inner")
+        if inner is None:
+            raise AttributeError(name)
+        return getattr(inner, name)
+
+
+def _resilient(model: BaseChatModel, model_id: str, fast: bool) -> BaseChatModel:
+    """Wrap a built model with resilience unless retries are disabled (retries==1
+    and no failover configured), in which case return it untouched."""
+    settings = get_settings()
+    if settings.copilot_llm_retries <= 1 and not settings.copilot_fallback_provider.strip():
+        return model
+    return _ResilientLLM(model, model_id, fast)  # type: ignore[return-value]
+
+
+def _build_fallback(provider: str, model_id: str, fast: bool, tools):
+    """Build a model on the fallback provider (its own default model + key), best-effort."""
+    if provider not in _DEFAULTS:
+        return None
+    try:
+        key = runtime.provider_key(provider)
+        model = _DEFAULTS[provider]["fast" if fast else "main"]
+        built = _build(provider, model, key, fast)
+        return built.bind_tools(tools) if tools else built
+    except Exception:  # noqa: BLE001 — failover is best-effort; original error will surface
+        log.warning("failover provider '%s' unavailable", provider, exc_info=True)
+        return None
 
 
 def _build(provider: str, model: str, key: str, fast: bool) -> BaseChatModel:

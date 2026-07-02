@@ -21,6 +21,8 @@ UI** — those overrides are in-memory only, not persisted across restarts.
 | `COPILOT_SANDBOX_CMD` | `node checkout.test.js` | Reproducer command run before/after the patch (operator-set) |
 | `COPILOT_SANDBOX_TIMEOUT_S` | `30` | Wall-clock timeout per sandbox subprocess run |
 | `COPILOT_CONFIDENCE_GATE` | `true` | Refuse programmatic auto-approval of a high-risk write on thin evidence (humans can still approve) |
+| `COPILOT_LLM_RETRIES` | `3` | Bounded retries + circuit breaker around each LLM call (1 disables) |
+| `COPILOT_FALLBACK_PROVIDER` | — | Cross-provider failover when the primary is unavailable (needs that provider's key) |
 | `COPILOT_LEARN_INCIDENTS` | `true` | After a confident RCA, append a runbook to the learned corpus so future runs warm-start from it |
 | `COPILOT_LEARNED_CORPUS` | *(root)* | Path to the learned-incidents JSON (empty = `learned_incidents.json` in the project root) |
 | `COPILOT_ADVERSARIAL_CRITIQUE` | `true` | Prosecutor/Defender panel stress-tests the root cause; abstains/downgrades on a standing objection |
