@@ -108,13 +108,21 @@
 }
 .btn3d--primary {
   color: #fff;
-  background: linear-gradient(135deg, var(--purple), #5a7bff 55%, var(--cyan));
-  box-shadow: 0 8px 30px -8px rgba(124, 92, 255, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  /* Brighter, more uniform fill + a crisp ring so the primary CTA never reads as
+     faded/ghost over the bright 3D backdrop. */
+  background: linear-gradient(135deg, #8b6dff 0%, #6b8bff 50%, #2ad4ee 100%);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  box-shadow:
+    0 10px 34px -8px rgba(124, 92, 255, 0.95),
+    0 0 0 4px rgba(124, 92, 255, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 .btn3d--primary:hover {
   transform: translateY(-2px);
-  filter: brightness(1.08);
-  box-shadow: 0 14px 40px -8px rgba(124, 92, 255, 0.9);
+  filter: brightness(1.1);
+  box-shadow:
+    0 16px 44px -8px rgba(124, 92, 255, 1),
+    0 0 0 5px rgba(124, 92, 255, 0.22);
 }
 .btn3d--ghost {
   color: var(--txt);
@@ -160,12 +168,12 @@
   top: 50%;
   transform: translate(-50%, -50%);
   width: min(1060px, 94vw);
-  height: 620px;
+  height: 760px;
   background: radial-gradient(
     ellipse at center,
-    rgba(5, 8, 22, 0.74) 0%,
-    rgba(5, 8, 22, 0.46) 42%,
-    transparent 72%
+    rgba(5, 8, 22, 0.82) 0%,
+    rgba(5, 8, 22, 0.6) 46%,
+    transparent 74%
   );
   filter: blur(8px);
   pointer-events: none;
@@ -861,7 +869,7 @@
 /* ---- How it works ---- */
 .how__flow {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(7, 1fr);
   gap: 14px;
 }
 .how__step {
