@@ -13,6 +13,7 @@ const PIPELINE = [
   { icon: "insight", name: "Diagnose", desc: "Pinpoint the root cause and propose the fix." },
   { icon: "refresh", name: "Reflect", desc: "Verify completeness, loop or finish." },
   { icon: "download", name: "Report", desc: "Deliver a structured RCA + postmortem." },
+  { icon: "check", name: "Verify", desc: "Prove the fix resolves the incident; revise if not." },
 ];
 
 const PILLARS = [
@@ -221,10 +222,11 @@ export function Landing({ onLaunch }: { onLaunch: () => void }) {
                   <i className="on" />
                   <i className="on" />
                   <i className="on" />
+                  <i className="on" />
                   <i className="live" />
                 </span>
               </span>
-              <strong className="hmetric__val">6-stage</strong>
+              <strong className="hmetric__val">7-stage</strong>
               <span className="hmetric__label">agent pipeline</span>
             </div>
             <div className="hmetric">
@@ -245,9 +247,9 @@ export function Landing({ onLaunch }: { onLaunch: () => void }) {
       <section className="lstats" aria-label="Platform at a glance">
         {[
           { value: "9", label: "MCP tool servers" },
-          { value: "47", label: "agent tools" },
+          { value: "48", label: "agent tools" },
           { value: "5", label: "LLM providers" },
-          { value: "188", label: "tests passing" },
+          { value: "379", label: "tests passing" },
         ].map((s) => (
           <div key={s.label} className="lstat">
             <span className="lstat__num grad-text">{s.value}</span>
