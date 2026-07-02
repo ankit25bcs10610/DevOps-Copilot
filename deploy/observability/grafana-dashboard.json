@@ -1,0 +1,45 @@
+{
+  "title": "DevOps Copilot — Agent SLOs",
+  "uid": "devops-copilot-slo",
+  "schemaVersion": 39,
+  "tags": ["devops-copilot", "slo"],
+  "timezone": "browser",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Investigations / min",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [{"expr": "rate(copilot_investigations_total[5m]) * 60", "legendFormat": "total"}]
+    },
+    {
+      "id": 2,
+      "title": "Success vs abstention vs failure rate",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [
+        {"expr": "rate(copilot_investigations_success_total[15m]) / clamp_min(rate(copilot_investigations_total[15m]),1e-9)", "legendFormat": "success"},
+        {"expr": "rate(copilot_investigations_abstained_total[15m]) / clamp_min(rate(copilot_investigations_total[15m]),1e-9)", "legendFormat": "abstained"},
+        {"expr": "rate(copilot_investigations_failed_total[15m]) / clamp_min(rate(copilot_investigations_total[15m]),1e-9)", "legendFormat": "failed"}
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Investigation latency (p50 / p90 / p99)",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "targets": [
+        {"expr": "histogram_quantile(0.5, rate(copilot_investigation_latency_seconds_bucket[15m]))", "legendFormat": "p50"},
+        {"expr": "histogram_quantile(0.9, rate(copilot_investigation_latency_seconds_bucket[15m]))", "legendFormat": "p90"},
+        {"expr": "histogram_quantile(0.99, rate(copilot_investigation_latency_seconds_bucket[15m]))", "legendFormat": "p99"}
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Token spend / hour",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [{"expr": "rate(copilot_tokens_total[1h]) * 3600", "legendFormat": "tokens/hr"}]
+    }
+  ]
+}
