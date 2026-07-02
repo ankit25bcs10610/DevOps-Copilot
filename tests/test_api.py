@@ -195,3 +195,12 @@ def test_global_spend_cap_blocks_new_investigation(client, monkeypatch):
     assert r.status_code == 429
     assert "budget" in r.json()["detail"].lower()
     monkeypatch.setattr(api, "_SPEND", None)
+
+
+def test_me_single_tenant_returns_operator(client):
+    r = client.get("/me")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["multi_tenant"] is False
+    assert body["authenticated"] is True
+    assert body["label"] == "Operator"

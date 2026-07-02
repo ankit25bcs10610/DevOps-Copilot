@@ -1,6 +1,6 @@
 // Thin, typed client for the DevOps Copilot backend.
 
-import type { AppConfig, ChatResponse, GithubStatus, MetricsResponse, StreamEvent } from "./types";
+import type { AppConfig, ChatResponse, GithubStatus, Me, MetricsResponse, StreamEvent } from "./types";
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 // Optional bearer token (set VITE_API_TOKEN when the backend has COPILOT_API_TOKEN).
@@ -135,6 +135,11 @@ export function submitFeedback(
 /** Fetch the running agent's provider, models, and MCP server catalog. */
 export function getConfig(): Promise<AppConfig> {
   return get<AppConfig>("/config");
+}
+
+/** Current identity for the UI (real org/role in multi-tenant mode). */
+export function getMe(): Promise<Me> {
+  return get<Me>("/me");
 }
 
 /** Switch LLM provider/model/key at runtime. */

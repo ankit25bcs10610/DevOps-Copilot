@@ -723,6 +723,22 @@ async def readyz():
     )
 
 
+@app.get("/me")
+async def me() -> dict:
+    """The current identity for the UI — real org/role in multi-tenant mode (resolved
+    from the credential by require_auth), or the single-tenant operator otherwise."""
+    s = get_settings()
+    if not s.copilot_multi_tenant:
+        return {"multi_tenant": False, "authenticated": True, "org": None,
+                "role": "owner", "label": "Operator"}
+    cfg = tenant_context.get_tenant()
+    if cfg is None:
+        return {"multi_tenant": True, "authenticated": False, "org": None,
+                "role": None, "label": "Guest"}
+    return {"multi_tenant": True, "authenticated": True, "org": cfg.org_id,
+            "role": cfg.role, "plan": cfg.plan, "label": cfg.org_id[:16]}
+
+
 @app.get("/config")
 async def config() -> dict:
     """Describe the running agent (provider, models, MCP servers) for the UI."""

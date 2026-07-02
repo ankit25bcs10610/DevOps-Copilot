@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { getMetrics, health } from "../api";
 import { useCopilot } from "../hooks/useCopilot";
 import { modelShort, providerLabel, useConfig } from "../hooks/useConfig";
+import { useMe } from "../hooks/useMe";
 import { AdminPanel } from "./AdminPanel";
 import { SignupModal } from "./SignupModal";
 import { Composer } from "./Composer";
@@ -120,6 +121,7 @@ function TopBar({
   onSignup: () => void;
 }) {
   const { config: cfg } = useConfig();
+  const me = useMe();
   const [online, setOnline] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -190,7 +192,9 @@ function TopBar({
           <span className="status__label">{label}</span>
         </span>
         <ThemePicker />
-        <span className="cns-avatar" role="img" aria-label="Account: Alex">A</span>
+        <span className="cns-avatar" role="img" aria-label={`Account: ${me.label}`}>
+          {me.label.charAt(0).toUpperCase()}
+        </span>
       </div>
     </header>
   );
@@ -200,6 +204,7 @@ export function Console({ onHome }: { onHome: () => void }) {
   const { turns, busy, awaitingApproval, send, respond, stop, newConversation, sendFeedback } =
     useCopilot();
   const endRef = useRef<HTMLDivElement>(null);
+  const me = useMe();
   const [adminOpen, setAdminOpen] = useState(false);
   const [signupOpen, setSignupOpen] = useState(false);
   const disabled = busy || awaitingApproval;
@@ -239,7 +244,7 @@ export function Console({ onHome }: { onHome: () => void }) {
             <div className="cns-scroll">
               <div className="welcome">
                 <div className="welcome__text">
-                  <p className="welcome__greet">{greeting()}, Alex!</p>
+                  <p className="welcome__greet">{greeting()}, {me.label}!</p>
                   <h1 className="welcome__title">Investigate a production incident</h1>
                   <p className="welcome__sub">
                     Ask a question and DevOps Copilot will pull logs, metrics, traces, Kubernetes
