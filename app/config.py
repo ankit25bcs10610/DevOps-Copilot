@@ -154,6 +154,13 @@ class Settings(BaseSettings):
     # running total crosses this, the agent is forced to conclude on its next step
     # — a hard cost kill-switch on top of the iteration cap. 0 = unlimited.
     copilot_max_tokens_per_run: int = 0
+    # FLEET-WIDE token ceiling over a rolling window (default 24h) across all
+    # investigations — the global backstop above per-run + per-tenant budgets. New
+    # investigations are refused once crossed. 0 = unlimited. Shared across replicas
+    # when COPILOT_REDIS_URL is set. copilot_global_spend_alert is the soft warn ratio.
+    copilot_global_token_cap: int = 0
+    copilot_global_spend_window_s: int = 86_400
+    copilot_global_spend_alert: float = 0.8
     copilot_checkpoint_db: str = "./copilot_checkpoints.sqlite"
     # Redis URL for the SHARED (cross-replica) rate limiter. Empty = per-process
     # in-memory limiter (single-instance only). e.g. redis://host:6379/0
