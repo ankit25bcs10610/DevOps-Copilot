@@ -2366,3 +2366,40 @@ input:focus-visible {
     transition: none;
   }
 }
+
+/* Error boundary fallback (main.tsx) — recoverable, on-brand crash screen. */
+.errorboundary {
+  max-width: 520px;
+  margin: 12vh auto;
+  padding: 28px 32px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  text-align: center;
+  color: var(--text);
+}
+.errorboundary__title { font-size: 20px; font-weight: 700; margin: 0 0 8px; }
+.errorboundary__msg { color: var(--text-dim); font-size: 14px; margin: 0 0 14px; }
+.errorboundary__detail {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--bad);
+  background: rgba(255, 107, 107, 0.08);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  overflow-x: auto;
+  text-align: left;
+  margin: 0 0 16px;
+}
+.errorboundary__btn {
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+.errorboundary__btn:hover { background: var(--accent); }

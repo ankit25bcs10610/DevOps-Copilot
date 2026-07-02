@@ -100,6 +100,16 @@ export interface RcaReport {
   critique?: Critique;
 }
 
+// Current identity for the UI (from GET /me).
+export interface Me {
+  multi_tenant: boolean;
+  authenticated: boolean;
+  org: string | null;
+  role: string | null;
+  plan?: string;
+  label: string;
+}
+
 export interface ChatResponse {
   thread_id: string;
   status: TurnStatus;
