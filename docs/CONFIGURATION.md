@@ -25,6 +25,9 @@ UI** — those overrides are in-memory only, not persisted across restarts.
 | `COPILOT_LEARNED_CORPUS` | *(root)* | Path to the learned-incidents JSON (empty = `learned_incidents.json` in the project root) |
 | `COPILOT_ADVERSARIAL_CRITIQUE` | `true` | Prosecutor/Defender panel stress-tests the root cause; abstains/downgrades on a standing objection |
 | `COPILOT_MODEL_ROUTING` | `true` | Triage informational requests onto the fast model; incidents stay on the main model |
+| `COPILOT_SLO_POLLER` | `false` | Proactively poll error-budget burn and auto-open an investigation before a page (spends tokens) |
+| `COPILOT_SLO_POLL_INTERVAL_S` | `300` | SLO poller sweep cadence (seconds) |
+| `COPILOT_SLO_COOLDOWN_S` | `3600` | Per-service cooldown before re-opening an SLO investigation |
 | `COPILOT_CHECKPOINT_DB` | `./copilot_checkpoints.sqlite` | SQLite path or a `postgres://…` URL |
 
 ## Data sources & connectors

@@ -47,8 +47,8 @@ trail, deterministic replay evals, tests, CI, and a single Docker image — **ac
   analysis tools (blast-radius, critical-path, SLO burn-rate, anomaly→trace, deploy-bisect).
 - **Trust & safety** — PII redaction + prompt-injection guardrails on all telemetry; a
   per-investigation token budget; a hash-chained audit trail.
-- **Triggered + delivered** — a signed PagerDuty webhook auto-investigates and posts findings to
-  Slack with Approve/Reject buttons.
+- **Triggered + proactive** — a signed PagerDuty webhook auto-investigates and posts findings to
+  Slack with Approve/Reject buttons; an opt-in SLO-burn poller opens investigations *before* a page.
 - **5 LLM providers**, switchable live from the UI (Anthropic · OpenAI · Gemini · Groq · DeepSeek).
 - **Opt-in multi-tenant SaaS** — orgs, RBAC, tenant-scoped API keys, usage metering + quotas,
   admin endpoints — additive, so the offline demo is unchanged when off.
