@@ -390,6 +390,32 @@ class TenantStore:
             await db.commit()
         return True
 
+    async def delete_org(self, org_id: str) -> bool:
+        """GDPR erasure: remove an org and ALL its scoped rows (memberships, API keys,
+        integration secrets, usage, the org itself). Pair with crypto_shred_org() to
+        also destroy the key material. Returns True if the org existed."""
+        import aiosqlite
+
+        async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute("SELECT 1 FROM orgs WHERE id=?", (org_id,)) as cur:
+                if await cur.fetchone() is None:
+                    return False
+            for tbl in ("memberships", "api_keys", "integration_secrets", "usage"):
+                await db.execute(f"DELETE FROM {tbl} WHERE org_id=?", (org_id,))  # noqa: S608 — fixed allowlist
+            await db.execute("DELETE FROM orgs WHERE id=?", (org_id,))
+            await db.commit()
+        return True
+
+    async def purge_usage_before(self, cutoff_iso: str) -> int:
+        """Retention: delete usage/metering rows older than the cutoff (ISO-8601).
+        Returns the number of rows removed."""
+        import aiosqlite
+
+        async with aiosqlite.connect(self.db_path) as db:
+            cur = await db.execute("DELETE FROM usage WHERE ts < ?", (cutoff_iso,))
+            await db.commit()
+            return cur.rowcount
+
     async def count_integrations(self, org_id: str) -> int:
         import aiosqlite
 

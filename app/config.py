@@ -165,6 +165,9 @@ class Settings(BaseSettings):
     # Redis URL for the SHARED (cross-replica) rate limiter. Empty = per-process
     # in-memory limiter (single-instance only). e.g. redis://host:6379/0
     copilot_redis_url: str = ""
+    # Data governance: purge usage/metering rows older than this many days (0 = keep
+    # forever). GDPR erasure + audit export are on-demand (see app/governance.py).
+    copilot_retention_days: int = 0
     # Prompt caching (Anthropic): cache the stable system prompt + bound tool
     # schemas so the agent's many loop iterations re-read them at ~0.1x cost
     # instead of re-paying full input price each turn. No-op for other providers.
