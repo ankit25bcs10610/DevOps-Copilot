@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import * as api from "../api";
 import type { AdminOrg, ApiKeyInfo, AuditEvent, UsageSummary } from "../types";
 import { Icon } from "./Icon";
+import { SkeletonBlock } from "./Skeleton";
 
 /** Tenant admin console (multi-tenant mode): org summary, usage vs quota, API-key
  *  management, and a tamper-evident audit viewer. Degrades to a clear notice when
@@ -93,6 +94,8 @@ export function AdminPanel({ onClose }: { onClose: () => void }) {
         </header>
 
         {error && <div className="admin__err" role="alert">{error}</div>}
+
+        {enabled === null && <SkeletonBlock lines={4} label="Loading admin console…" />}
 
         {enabled === false && outdated && (
           <p className="admin__note">
