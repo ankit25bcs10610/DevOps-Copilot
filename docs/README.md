@@ -9,7 +9,7 @@ Everything beyond the project [README](../README.md) lives here.
 ## How it works
 - **[Architecture](ARCHITECTURE.md)** — the three layers (interfaces · LangGraph orchestration · MCP tools) and the graph design.
 - **[The agent](AGENT.md)** — the 7-node investigation loop, human-in-the-loop approval, the structured RCA report, fix verification, guardrails, and the token budget.
-- **[Connectors](CONNECTORS.md)** — the 9 MCP servers / 47 tools, their live/offline modes, and how to add one.
+- **[Connectors](CONNECTORS.md)** — the 9 MCP servers / 48 tools, their live/offline modes, and how to add one.
 
 ## Operating it
 - **[Hardening](HARDENING.md)** — reliability, security, cost control, observability, reproducibility, testing/CI, accessibility.

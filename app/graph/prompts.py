@@ -24,7 +24,8 @@ acknowledge_incident, resolve_incident (WRITE)
 rollout_history, scale_deployment/rollback_deployment/restart_deployment (WRITE)
   - sentry: list_issues, get_issue, get_latest_event
   - traces: search_traces, get_trace, service_dependencies, analyze_blast_radius, \
-analyze_critical_path (self-time bottleneck + fault span), get_exemplars (anomaly→trace)
+analyze_critical_path (self-time bottleneck + fault span), get_exemplars (anomaly→trace), \
+correlate_incidents (cluster co-firing alerts → one shared root cause)
   - deploys: list_deploys, get_deploy, deploys_in_window (what shipped + when — \
 correlate a deploy with the error onset; ~80% of incidents are change-induced)
   - memory: search_incidents, get_incident_record (search PRIOR incidents/runbooks \

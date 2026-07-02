@@ -15,7 +15,7 @@ Every server has two modes:
 Mutating tools are marked **(W)** — they're classified by the
 [action policy](AGENT.md#human-in-the-loop-by-design) and gated behind human approval.
 
-## The 9 servers / 47 tools
+## The 9 servers / 48 tools
 
 | Server | Mode toggle | Tools |
 |--------|-------------|-------|
@@ -23,7 +23,7 @@ Mutating tools are marked **(W)** — they're classified by the
 | **pagerduty** (alerting) | `PAGERDUTY_API_TOKEN` | `list_incidents`, `get_incident`, `get_incident_alerts`, `add_incident_note` (W), `acknowledge_incident` (W), `resolve_incident` (W) |
 | **kubernetes** (orchestration) | `KUBE_CONFIG_PATH` | `list_pods`, `describe_pod`, `get_events`, `get_deployment_status`, `rollout_history`, `scale_deployment` (W), `rollback_deployment` (W), `restart_deployment` (W) |
 | **sentry** (errors) | `SENTRY_API_TOKEN` | `list_issues`, `get_issue`, `get_latest_event` |
-| **traces** (distributed tracing) | `TRACES_API_URL` | `search_traces`, `get_trace`, `service_dependencies`, `analyze_blast_radius`, `analyze_critical_path`, `get_exemplars` |
+| **traces** (distributed tracing) | `TRACES_API_URL` | `search_traces`, `get_trace`, `service_dependencies`, `analyze_blast_radius`, `analyze_critical_path`, `get_exemplars`, `correlate_incidents` |
 | **deploys** (change events) | `DEPLOYS_API_URL` | `list_deploys`, `get_deploy`, `deploys_in_window` |
 | **github** (repo host) | `GITHUB_TOKEN` + `GITHUB_REPO` | `list_recent_commits`, `get_commit_diff`, `correlate_changes`, `first_bad_deploy`, `list_workflow_runs`, `get_failed_job_logs`, `create_pull_request` (W) |
 | **repo** (sandboxed FS + git) | `TARGET_REPO_PATH` | `list_dir`, `read_file`, `grep`, `git_log` |
@@ -46,6 +46,9 @@ direction from the research: *stop adding raw-signal connectors, add analysis*):
 - `analyze_critical_path` — self-time latency attribution + the deepest **fault span**,
   so the agent blames the span actually responsible, not its slow parent.
 - `get_exemplars` — joins a metric-anomaly window to representative failing traces.
+- `correlate_incidents` — given several services alerting at once, ranks (via the
+  dependency graph) which one the others cascade *from* — one shared root cause, not
+  a storm of N incidents.
 - `correlate_changes` — ranks recent commits by overlap with the incident signal.
 - `first_bad_deploy` — time-anchored deploy bisect: the last change before onset.
 - `search_incidents` — BM25 over prior RCAs/runbooks ("have we seen this before?").
