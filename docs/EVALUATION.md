@@ -61,3 +61,12 @@ too-narrow exfiltration matcher).
 Thumbs-down feedback captured in production (`POST /feedback` → `feedback.jsonl`) is the
 natural source of new regression cases: convert a real failure into a `testcases.yaml`
 entry, record a cassette, and it's gated forever after.
+
+**Continual incident memory.** Beyond regression cases, every *confidently-resolved*
+investigation is automatically distilled into a runbook record and appended to the
+learned incident corpus (`COPILOT_LEARN_INCIDENTS`, deduped by root cause, abstained
+runs skipped). The planner already warm-starts from the corpus via BM25 ("have we seen
+this before?"), so institutional memory **compounds** — the second occurrence of a
+failure mode starts from the first one's runbook instead of a blank page. Learned
+incidents are stored separately from the bundled demo corpus so the fixture is never
+mutated (`app/incident_memory.py`).

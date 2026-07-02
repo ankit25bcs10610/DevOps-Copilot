@@ -184,6 +184,14 @@ class Settings(BaseSettings):
     # approvers — evals, bots, a future auto-remediation loop — from rubber-stamping
     # a high-risk action on a low-confidence investigation. true (default) | false.
     copilot_confidence_gate: bool = True
+    # Continual learning: after a confidently-resolved investigation, append a
+    # structured runbook record to the learned incident corpus so future runs
+    # warm-start from it ("have we seen this before?" improves over time). Only
+    # well-evidenced, non-abstained runs are recorded. true (default) | false.
+    copilot_learn_incidents: bool = True
+    # Where learned incidents accumulate (JSON). Kept separate from the bundled
+    # demo corpus so the shipped fixture is never mutated. Defaults to project root.
+    copilot_learned_corpus: str = ""
 
     @field_validator("copilot_provider")
     @classmethod
