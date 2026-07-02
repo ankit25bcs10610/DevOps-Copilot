@@ -2290,3 +2290,79 @@ input {
   font-size: 11px;
   color: var(--text-faint);
 }
+
+/* ============================================================================
+   Interaction polish (ui-ux-pro-max pass)
+   Additive, checklist-aligned micro-interactions layered over the existing
+   component styles: uniform pointer affordance, a subtle press state, smoother
+   easing, and a cohesive treatment for the RCA evidence sub-panels. All motion
+   is disabled under prefers-reduced-motion (guard at the end).
+   ============================================================================ */
+
+/* Every enabled button reads as clickable; disabled ones clearly don't. */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]) {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* A light, layout-stable press: translate (never scale) so nothing reflows. */
+button:not(:disabled):active {
+  transform: translateY(1px);
+}
+
+/* Consistent, snappy easing for interactive color/shadow/border transitions
+   (150–300ms per the checklist). Applies only where a component hasn't set its
+   own transition, so existing bespoke animations are untouched. */
+button,
+a,
+.rca__hyp,
+.approval__action,
+.cns-card,
+.cns-stat {
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Cohere the evidence sub-panels (verification, sandbox, critique) into one
+   readable "audit trail" system: consistent inset, hairline, and a calm hover
+   that lifts the panel slightly without shifting neighbours. */
+.rca__verify,
+.rca__sandbox,
+.rca__critique {
+  transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s;
+}
+.rca__verify:hover,
+.rca__critique:hover {
+  box-shadow: inset 0 0 0 1px var(--border-soft), 0 6px 18px -12px rgba(0, 0, 0, 0.6);
+}
+
+/* Verdict-tinted left rails share one accent scale so the panels read as a set. */
+.rca__verify--verified { box-shadow: inset 3px 0 0 -0px var(--ok); }
+.rca__verify--unverified { box-shadow: inset 3px 0 0 -0px var(--bad); }
+
+/* Keyboard focus: a slightly larger, higher-contrast ring on the primary
+   interactive surfaces (extends the global :focus-visible without overriding it). */
+button:focus-visible,
+a:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+
+/* Respect reduced-motion: no press translate, no hover lift. */
+@media (prefers-reduced-motion: reduce) {
+  button:not(:disabled):active {
+    transform: none;
+  }
+  .rca__verify,
+  .rca__sandbox,
+  .rca__critique {
+    transition: none;
+  }
+}
