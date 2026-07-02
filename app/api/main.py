@@ -339,6 +339,9 @@ async def lifespan(app: FastAPI):
         if get_settings().copilot_tenant_db.startswith(("postgres://", "postgresql://")) is False:
             log.warning("multi-tenant on SQLite is app-level isolated, not RLS-hard-isolated; "
                         "use Postgres + RLS for production tenant isolation")
+    # OpenTelemetry tracing (no-op unless OTEL_EXPORTER_OTLP_ENDPOINT is set).
+    from app import otel
+    otel.init_tracing()
     # Background job worker: drains queued (webhook/SLO) investigations with retries
     # + dead-letter, so a transient failure or restart doesn't silently drop them.
     from app.jobqueue import make_job_queue, run_worker
