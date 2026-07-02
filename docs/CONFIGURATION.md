@@ -17,6 +17,9 @@ UI** — those overrides are in-memory only, not persisted across restarts.
 | `COPILOT_MAX_TOKENS_PER_RUN` | `0` | Per-investigation token budget (0 = unlimited) |
 | `COPILOT_VERIFY_FIX` | `true` | Verify the proposed fix addresses the root cause (adds the verify node) |
 | `COPILOT_VERIFY_MAX_ATTEMPTS` | `1` | Times an unverified fix bounces back to the agent to revise (0 = annotate only) |
+| `COPILOT_SANDBOX_VERIFY` | `false` | Prove a fix by applying its `patch` to a throwaway repo copy and running a reproducer (executes model patch — off by default) |
+| `COPILOT_SANDBOX_CMD` | `node checkout.test.js` | Reproducer command run before/after the patch (operator-set) |
+| `COPILOT_SANDBOX_TIMEOUT_S` | `30` | Wall-clock timeout per sandbox subprocess run |
 | `COPILOT_CHECKPOINT_DB` | `./copilot_checkpoints.sqlite` | SQLite path or a `postgres://…` URL |
 
 ## Data sources & connectors

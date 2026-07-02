@@ -25,7 +25,7 @@ START → plan → agent ─┬─ approve call? → approval ─┬─ approved
 | **4 · Diagnose** | Pinpoint the root cause and propose a fix, grounded in observed tool output. |
 | **5 · Reflect** | Judge completeness (fast model). On *continue*, hand the agent a **targeted gap note** so the next pass makes progress instead of repeating itself. |
 | **6 · Report** | Compile a **structured RCA** + render a blameless postmortem. |
-| **7 · Verify** | Assess whether the **proposed fix actually addresses the root cause** — deterministically grounding the fix against the implicated files/services, plus a fast-model check that emits **resolution criteria**. An unverified fix bounces back to the agent **once** to revise (bounded by `COPILOT_VERIFY_MAX_ATTEMPTS`); informational runs with no fix pass straight through. Toggle with `COPILOT_VERIFY_FIX`. |
+| **7 · Verify** | Assess whether the **proposed fix actually addresses the root cause** — deterministically grounding the fix against the implicated files/services, plus a fast-model check that emits **resolution criteria**. Optionally runs a **sandbox counterfactual** (`COPILOT_SANDBOX_VERIFY`): applies the PR's `patch` to a throwaway repo copy and runs a reproducer — a FAIL→PASS transition *proves* the fix and overrides the model's opinion. An unverified fix bounces back to the agent **once** to revise (bounded by `COPILOT_VERIFY_MAX_ATTEMPTS`); informational runs with no fix pass straight through. Toggle with `COPILOT_VERIFY_FIX`. |
 
 The loop is bounded twice over: at the **iteration cap** *or* the **per-investigation
 token budget**, the agent is invoked without tools and forced to summarize — so a run

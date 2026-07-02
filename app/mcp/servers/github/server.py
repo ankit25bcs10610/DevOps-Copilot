@@ -336,11 +336,19 @@ def get_failed_job_logs(run_id: int | str, max_chars: int | str = 4000) -> dict:
 
 
 @mcp.tool()
-def create_pull_request(title: str, body: str, head: str, base: str = "main") -> dict:
+def create_pull_request(
+    title: str, body: str, head: str, base: str = "main", patch: str = ""
+) -> dict:
     """(WRITE) Open a pull request proposing a fix.
 
     This mutates the remote — the agent must obtain human approval first.
     In offline mode it returns a simulated PR object.
+
+    `patch` (optional): the fix as a unified diff (``--- a/file`` / ``+++ b/file``
+    hunks) over the target repo. When provided, DevOps Copilot can apply it to a
+    throwaway repo copy and run a reproducer to PROVE the fix resolves the incident
+    (sandbox counterfactual). Always include it when you can express the fix as a
+    concrete code change — a verified fix is far more trustworthy than a described one.
     """
     if OFFLINE:
         return {
@@ -349,6 +357,7 @@ def create_pull_request(title: str, body: str, head: str, base: str = "main") ->
             "title": title,
             "head": head,
             "base": base,
+            "has_patch": bool(patch and patch.strip()),
         }
     repo, err = _repo_or_error()
     if err:

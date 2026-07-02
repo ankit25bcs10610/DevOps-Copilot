@@ -162,6 +162,20 @@ export function RcaReportCard({ report }: { report: RcaReport }) {
                 {report.verification.rationale && (
                   <p className="rca__verify-rationale">{report.verification.rationale}</p>
                 )}
+                {report.verification.sandbox &&
+                  report.verification.sandbox.verdict !== "no_patch" && (
+                    <div className={`rca__sandbox rca__sandbox--${report.verification.sandbox.verdict}`}>
+                      <Icon
+                        name={report.verification.sandbox.verdict === "resolved" ? "check" : "help"}
+                        size={13}
+                        className="rca__hyp-icon"
+                      />
+                      <span>
+                        <strong>Sandbox counterfactual: {report.verification.sandbox.verdict}</strong>
+                        {report.verification.sandbox.detail ? ` — ${report.verification.sandbox.detail}` : ""}
+                      </span>
+                    </div>
+                  )}
                 {report.verification.resolution_criteria.length > 0 && (
                   <>
                     <div className="rca__verify-label">Resolution criteria</div>
