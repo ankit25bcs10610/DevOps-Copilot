@@ -113,21 +113,26 @@ public HTTPS URL (i.e. a deployed instance).
 Set `LANGCHAIN_TRACING_V2=true` + `LANGCHAIN_API_KEY` to ship traces to LangSmith
 (`app/observability.py` wires the env on startup). Structured logs go to stdout.
 
-## 6. Known limits → next scaling steps
+## 6. Horizontal scaling (multi-instance)
 
-The app is production-*hardened* but currently **single-instance**. Before
-horizontal scaling:
+The shared-state seams are now in place — set these and run `replicaCount > 1`
+(the Helm chart in `deploy/helm/` wires an HPA + PDB):
 
-- **Sessions + the rate limiter are in-process.** Two replicas don't share them.
-  Move the limiter behind a gateway/Redis, and rely on the checkpointer (below)
-  so any replica can resume any thread.
-- **Checkpointer: SQLite by default; Postgres is built-in.** Set
-  `COPILOT_CHECKPOINT_DB` to a `postgres://...` URL and install the `postgres`
-  extra (`uv pip install -e ".[postgres]"`) — `make_checkpointer()` switches to
-  the Postgres saver automatically (state is keyed by `thread_id`, so instances
-  share it). An encrypted per-tenant secret vault (`app/secrets_vault.py`,
-  `secrets` extra) and an audit trail (`app/audit.py`) are also in place as
-  multi-tenant foundations.
+- **Shared session state.** Set `COPILOT_CHECKPOINT_DB` to a `postgres://...` URL
+  (install the `postgres` extra) — `make_checkpointer()` switches to the Postgres
+  saver automatically, and because graph state is keyed by `thread_id`, an evicted
+  session **rehydrates from the checkpointer on any replica** (`_get_session`).
+- **Shared limiter / job queue / spend cap.** Set `COPILOT_REDIS_URL` to a
+  `redis://...` URL — the rate limiter (`app/ratelimit.py`), the durable
+  investigation queue (`app/jobqueue.py`), and the fleet-wide token cap
+  (`app/spend.py`) all switch to the Redis backend so limits/jobs/budgets hold
+  across replicas.
+- **Secrets + observability.** Source secrets from a manager
+  (`COPILOT_SECRETS_PROVIDER=aws|vault`, or External Secrets → the chart's Secret),
+  export traces (`OTEL_EXPORTER_OTLP_ENDPOINT`), and scrape agent SLOs at
+  `GET /metrics/slo` (Grafana dashboard + Prometheus alerts in `deploy/observability/`).
+
+### Still single-instance-only
 - **MCP servers run as in-container stdio subprocesses** — one per server, held
   open for each live session (so at most `COPILOT_MAX_SESSIONS` × 3 processes;
   the cap defaults to 50 and idle sessions are evicted LRU). For isolation/scale,
