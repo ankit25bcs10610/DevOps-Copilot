@@ -354,6 +354,42 @@ class TenantStore:
                 rows = await cur.fetchall()
         return {name: self._dec(dek, tok) for name, tok in rows}
 
+    async def rotate_org_dek(self, org_id: str) -> bool:
+        """Rotate this org's DEK: re-encrypt every integration secret under a fresh
+        wrapped DEK and swap it in atomically. Limits the blast radius of a leaked
+        DEK. Returns True if the org exists."""
+        old = await self._wrapped_dek(org_id)
+        if not old:
+            return False
+        secrets = await self.get_integration_secrets(org_id)  # decrypt under old DEK
+        new_wrapped = secrets_vault.new_wrapped_dek()
+        import aiosqlite
+
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("UPDATE orgs SET wrapped_dek=? WHERE id=?", (new_wrapped, org_id))
+            for name, value in secrets.items():
+                await db.execute(
+                    "UPDATE integration_secrets SET value_encrypted=? WHERE org_id=? AND name=?",
+                    (secrets_vault.encrypt_with(new_wrapped, value), org_id, name),
+                )
+            await db.commit()
+        return True
+
+    async def crypto_shred_org(self, org_id: str) -> bool:
+        """Cryptographic erasure: drop the org's DEK and its encrypted secrets so they
+        are permanently unrecoverable — the basis for GDPR-style deletion. Returns
+        True if the org existed."""
+        import aiosqlite
+
+        async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute("SELECT 1 FROM orgs WHERE id=?", (org_id,)) as cur:
+                if await cur.fetchone() is None:
+                    return False
+            await db.execute("DELETE FROM integration_secrets WHERE org_id=?", (org_id,))
+            await db.execute("UPDATE orgs SET wrapped_dek='' WHERE id=?", (org_id,))
+            await db.commit()
+        return True
+
     async def count_integrations(self, org_id: str) -> int:
         import aiosqlite
 
