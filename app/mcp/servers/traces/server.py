@@ -282,5 +282,17 @@ def analyze_blast_radius(failing_service: str) -> dict:
     return result
 
 
+@mcp.tool()
+def correlate_incidents(services: list[str]) -> dict:
+    """Given several services alerting at once (an incident 'storm'), use the
+    dependency graph to rank which one the others most likely cascade FROM — so you
+    chase ONE shared root cause instead of N incidents. Returns the ranked
+    candidates and the single most-likely shared root (`likely_root`)."""
+    from app.correlation import correlate_storm
+
+    result = correlate_storm(list(services or []), service_dependencies())
+    return result
+
+
 if __name__ == "__main__":
     mcp.run(transport="stdio")

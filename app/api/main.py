@@ -110,7 +110,7 @@ MCP_CATALOG = [
         "custom": True,
         "tools": [
             "search_traces", "get_trace", "service_dependencies", "analyze_blast_radius",
-            "analyze_critical_path", "get_exemplars",
+            "analyze_critical_path", "get_exemplars", "correlate_incidents",
         ],
     },
     {

@@ -11,7 +11,7 @@
 ![LangGraph](https://img.shields.io/badge/LangGraph-stateful%20agent-1C3C3C)
 ![MCP](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-7C5CFF)
 
-LangGraph 7-node graph · 9 MCP servers / 47 tools · structured RCA + postmortem · fix verification · human-in-the-loop · opt-in multi-tenant SaaS · runs fully offline
+LangGraph 7-node graph · 9 MCP servers / 48 tools · structured RCA + postmortem · fix verification · human-in-the-loop · opt-in multi-tenant SaaS · runs fully offline
 
 </div>
 
@@ -42,7 +42,7 @@ trail, deterministic replay evals, tests, CI, and a single Docker image — **ac
   hypotheses with cited evidence; abstains on thin evidence instead of bluffing.
 - **Human-in-the-loop, by design** — a risk-tiered policy gates every consequential action
   behind a resumable approval the routing can't bypass.
-- **9 MCP servers / 47 tools** — datadog · pagerduty · kubernetes · sentry · traces · deploys ·
+- **9 MCP servers / 48 tools** — datadog · pagerduty · kubernetes · sentry · traces · deploys ·
   github · repo · incident-memory, each **live-API or offline-fixture**, plus deterministic
   analysis tools (blast-radius, critical-path, SLO burn-rate, anomaly→trace, deploy-bisect).
 - **Trust & safety** — PII redaction + prompt-injection guardrails on all telemetry; a
@@ -100,7 +100,7 @@ The agent never imports a server — it only sees the tools each MCP server adve
 | **[Configuration](docs/CONFIGURATION.md)** | Every environment variable + the full HTTP API surface |
 | **[Architecture](docs/ARCHITECTURE.md)** | The three layers and the LangGraph design |
 | **[The agent](docs/AGENT.md)** | The 7-node loop, approval gate, RCA report, fix verification, guardrails, token budget |
-| **[Connectors](docs/CONNECTORS.md)** | The 9 MCP servers / 47 tools, live/offline modes, how to add one |
+| **[Connectors](docs/CONNECTORS.md)** | The 9 MCP servers / 48 tools, live/offline modes, how to add one |
 | **[Hardening](docs/HARDENING.md)** | Reliability, security, cost, observability, reproducibility, testing/CI |
 | **[Evaluation](docs/EVALUATION.md)** | Eval harness, trajectory/path-safety scorers, golden-replay CI gate |
 | **[Commercialization](docs/COMMERCIALIZATION.md)** | The opt-in multi-tenant SaaS layer (and what's deferred) |
