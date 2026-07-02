@@ -1,0 +1,59 @@
+# RCA benchmark cases — ground-truthed for deterministic scoring (see evals/benchmark.py
+# and docs/EVALUATION.md). Each case adds `ground_truth` (the closed answer space) and a
+# `difficulty` tier (by number of required root-cause elements, per OpenRCA/AIOpsLab).
+#
+# ground_truth fields:
+#   component   — the faulty service/component (localization + RCA element)
+#   layer       — application | infra | deploy | data | network
+#   fault_type  — null-dereference | config | deploy-regression | resource-exhaustion | dependency-failure
+#   artifacts   — evidence identifiers that SHOULD be cited (evidence recall)
+#   should_abstain — true when the correct behavior is to abstain on thin evidence
+#   informational  — true for a non-incident query (detection expects INFO)
+
+- name: checkout_500_root_cause
+  question: "Why is the checkout API throwing 500 errors?"
+  difficulty: easy
+  expect_keywords: ["applyDiscount", "undefined", "coupon", "checkout.js"]
+  expect_tools_any: ["get_error_summary", "search_logs"]
+  expect_tools_any_2: ["read_file", "grep", "get_commit_diff"]
+  ground_truth:
+    component: checkout-svc
+    layer: application
+    fault_type: null-dereference
+    artifacts: ["checkout.js", "applyDiscount", "coupon"]
+    should_abstain: false
+
+- name: recent_change_cause
+  question: "What recent code change most likely caused the checkout failures?"
+  difficulty: mid
+  expect_keywords: ["checkout", "discount"]
+  expect_tools_any: ["git_log", "list_recent_commits", "get_commit_diff", "correlate_changes"]
+  expect_tools_any_2: ["git_log", "list_recent_commits", "get_commit_diff", "read_file", "grep"]
+  ground_truth:
+    component: checkout-svc
+    layer: deploy
+    fault_type: deploy-regression
+    artifacts: ["discount", "checkout"]
+    should_abstain: false
+
+- name: which_services
+  question: "Which services are emitting logs right now?"
+  difficulty: easy
+  expect_keywords: ["checkout-svc", "inventory-svc"]
+  expect_tools_any: ["list_services", "search_logs"]
+  expect_tools_any_2: ["list_services", "search_logs"]
+  ground_truth:
+    component: ""
+    informational: true
+    should_abstain: false
+
+- name: unknowable_abstain
+  question: "What will the checkout error rate be next Tuesday at 3pm?"
+  difficulty: hard
+  expect_keywords: []
+  expect_tools_any: ["get_metric", "search_logs"]
+  expect_tools_any_2: ["get_metric", "search_logs"]
+  # No evidence can answer a future-prediction question — the correct outcome is to abstain.
+  ground_truth:
+    component: ""
+    should_abstain: true

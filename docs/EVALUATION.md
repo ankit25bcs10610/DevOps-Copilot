@@ -69,6 +69,43 @@ case is the natural response to any injection attempt seen in the wild — it be
 permanent regression test, and often hardens a pattern (this suite already caught a
 too-narrow exfiltration matcher).
 
+## RCA benchmark scorecard
+
+Beyond the pass/fail golden gate, `evals/benchmark.py` scores the structured RCA the
+way the 2025-26 agent-eval literature recommends (AIOpsLab, OpenRCA, CUJBench, RCAgent,
+the Microsoft FSE'24 RCA study, and the Agentic Benchmark Checklist). Cases carry a
+ground-truth **closed answer space** (`evals/benchmark_cases.yaml`): `component`,
+`layer`, `fault_type`, cited `artifacts`, `should_abstain`, and a `difficulty` tier.
+
+Metrics (all deterministic, offline — no LLM judge, which is unreliable for citation
+faithfulness):
+
+- **RCA correctness** — exact-match after canonicalization of the root-cause *elements*,
+  reported as **A@1** (all elements) and **PCW** (partial credit, 0.5 component / 0.2
+  layer / 0.3 fault). Matching is **committed** — naming every layer/fault/service earns
+  nothing — so restatement can't inflate the score.
+- **Localization** — top-1 / top-3 of the faulty component among ranked hypotheses.
+- **Evidence** — recall of ground-truth artifacts + **groundedness** (cited evidence must
+  fuzzy-match the source telemetry).
+- **Calibration** — **ECE** + **Brier** over stated-confidence-vs-correctness; abstention is
+  a first-class outcome (correct abstention counts as correct; a confident-wrong answer is
+  the worst case), classified with the Microsoft failure-mode taxonomy.
+- **Reliability** — `pass@k` / `pass^k` estimators (meaningful only with live multi-sample
+  runs; deterministic replay is `pass^1`).
+- **Efficiency / safety** — steps, tokens, path-safety — the outcome is graded, not the exact path.
+
+The scorecard is **stratified by difficulty tier** (accuracy collapses on multi-element
+cases). Crucially, a **null (do-nothing) and adversarial (evidence-spam) baseline
+self-check** runs on every invocation and in CI (`tests/test_benchmark.py`) — both must
+score **zero** on answer cases, proving the scorer can't be gamed (this check caught, and
+drove the fix for, an early gameable version).
+
+```bash
+uv run python -m evals.run_benchmark              # scorecard (replay) + baseline self-check
+uv run python -m evals.run_benchmark --baselines  # non-gameability self-check only (fully offline)
+uv run python -m evals.run_benchmark --live        # run the agent against a real LLM
+```
+
 ## The learning loop
 
 Thumbs-down feedback captured in production (`POST /feedback` → `feedback.jsonl`) is the
