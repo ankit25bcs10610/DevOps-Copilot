@@ -182,6 +182,18 @@ class TenantStore:
             await db.commit()
         return m
 
+    async def remove_member(self, org_id: str, user_id: str) -> bool:
+        """Remove a user's membership in an org (SCIM deprovisioning). Returns True if
+        a membership was removed."""
+        import aiosqlite
+
+        async with aiosqlite.connect(self.db_path) as db:
+            cur = await db.execute(
+                "DELETE FROM memberships WHERE org_id=? AND user_id=?", (org_id, user_id)
+            )
+            await db.commit()
+            return cur.rowcount > 0
+
     async def get_membership_by_email(self, email: str) -> tuple[str, str] | None:
         """Resolve a user's (org_id, role) by email — used to map a Supabase/SSO
         identity to a tenant. Returns the first membership, or None if not a member."""
