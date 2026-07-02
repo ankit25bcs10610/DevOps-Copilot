@@ -209,6 +209,10 @@ class Settings(BaseSettings):
     # before it will re-open an investigation for a still-burning service.
     copilot_slo_poll_interval_s: int = 300
     copilot_slo_cooldown_s: int = 3600
+    # Parallel multi-hypothesis probe: when the RCA has 2+ competing hypotheses,
+    # score each concurrently against the observed evidence and re-rank them, so a
+    # weakly-supported top hypothesis can't win by ordering alone. true (default).
+    copilot_parallel_hypotheses: bool = True
 
     @field_validator("copilot_provider")
     @classmethod

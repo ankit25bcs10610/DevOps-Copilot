@@ -614,3 +614,63 @@ def test_adversarial_critique_upheld_and_skips_defender_when_no_objections():
     out = _adversarial_critique(_LLM(), "why?", {"root_cause": "X"}, "digest")
     assert out["verdict"] == "upheld"
     assert len(calls) == 1  # defender not called when nothing to refute
+
+
+# --- parallel multi-hypothesis probe -------------------------------------- #
+from app.graph.nodes import (  # noqa: E402
+    _competing_hypotheses,
+    _merge_probe_scores,
+    _parse_probe,
+    _probe_hypotheses,
+)
+
+
+def test_parse_probe_clamps_and_defaults():
+    p = _parse_probe('{"support":1.5,"verdict":"maybe","rationale":"x"}')
+    assert p["support"] == 1.0 and p["verdict"] == "inconclusive"
+    assert _parse_probe("not json")["support"] == 0.0
+
+
+def test_competing_hypotheses_excludes_invalidated():
+    hyps = [{"verdict": "validated"}, {"verdict": "invalidated"}, {"verdict": "inconclusive"}]
+    assert len(_competing_hypotheses(hyps)) == 2
+
+
+def test_merge_probe_scores_reranks_and_sinks_unprobed():
+    hyps = [{"cause": "a"}, {"cause": "b"}, {"cause": "c"}]
+    scores = {0: {"support": 0.2, "verdict": "inconclusive", "rationale": ""},
+              1: {"support": 0.8, "verdict": "validated", "rationale": "r"}}
+    merged = _merge_probe_scores(hyps, scores)
+    assert [h["cause"] for h in merged] == ["b", "a", "c"]  # 0.8, 0.2, unprobed last
+    assert merged[0]["probe_support"] == 0.8
+
+
+def test_probe_hypotheses_reranks_by_concurrent_support():
+    hyps = [
+        {"cause": "downstream inventory-svc outage", "verdict": "inconclusive"},
+        {"cause": "null deref in applyDiscount", "verdict": "inconclusive"},
+    ]
+
+    class _LLM:
+        def invoke(self, msgs):
+            text = msgs[-1].content
+            if "applyDiscount" in text:  # unique to the null-deref hypothesis's cause
+                return SimpleNamespace(
+                    content='{"support":0.9,"verdict":"validated","rationale":"log matches"}',
+                    usage_metadata={"total_tokens": 2})
+            return SimpleNamespace(
+                content='{"support":0.1,"verdict":"invalidated","rationale":"no evidence"}',
+                usage_metadata={"total_tokens": 2})
+
+    out = _probe_hypotheses(_LLM(), hyps, "digest: TypeError checkout.js:42 rising 5xx")
+    assert out["probed"] == 2
+    assert out["tokens"] == 4
+    assert out["hypotheses"][0]["cause"] == "null deref in applyDiscount"
+    assert out["hypotheses"][0]["probe_support"] == 0.9
+
+
+def test_probe_hypotheses_noop_with_fewer_than_two_competing():
+    hyps = [{"cause": "a", "verdict": "validated"}, {"cause": "b", "verdict": "invalidated"}]
+    out = _probe_hypotheses(object(), hyps, "d")  # only 1 competing -> llm never touched
+    assert out["probed"] == 0
+    assert out["hypotheses"] == hyps

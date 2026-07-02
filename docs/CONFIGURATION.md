@@ -28,6 +28,7 @@ UI** — those overrides are in-memory only, not persisted across restarts.
 | `COPILOT_SLO_POLLER` | `false` | Proactively poll error-budget burn and auto-open an investigation before a page (spends tokens) |
 | `COPILOT_SLO_POLL_INTERVAL_S` | `300` | SLO poller sweep cadence (seconds) |
 | `COPILOT_SLO_COOLDOWN_S` | `3600` | Per-service cooldown before re-opening an SLO investigation |
+| `COPILOT_PARALLEL_HYPOTHESES` | `true` | Concurrently score 2+ competing RCA hypotheses against evidence and re-rank |
 | `COPILOT_CHECKPOINT_DB` | `./copilot_checkpoints.sqlite` | SQLite path or a `postgres://…` URL |
 
 ## Data sources & connectors

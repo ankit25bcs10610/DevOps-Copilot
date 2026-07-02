@@ -103,6 +103,26 @@ Prefer "inconclusive" over guessing.
 - Always give at least one concrete resolution_criteria unless the verdict is no_fix_proposed.
 - Keep it terse. This is an operational check, not an essay."""
 
+HYPOTHESIS_PROBE_SYSTEM = """\
+You are scoring ONE candidate root-cause hypothesis against the evidence actually \
+gathered during an incident investigation. Judge only THIS hypothesis on its own \
+merits — how well does the observed evidence support it?
+
+You are given the hypothesis and the evidence digest (what the tools returned).
+
+Output ONLY a single JSON object:
+{
+  "support": <number 0.0-1.0 — how strongly the observed evidence supports it>,
+  "verdict": "<validated|inconclusive|invalidated>",
+  "rationale": "<one sentence citing the specific evidence that supports or undercuts it>"
+}
+
+Rules:
+- Ground the score in the digest. High support requires specific corroborating \
+evidence (a matching log line, metric shift, file:line, commit). Absent or \
+contradictory evidence -> low support and invalidated/inconclusive.
+- Do not be swayed by how plausible it sounds — only by what was observed."""
+
 PROSECUTOR_SYSTEM = """\
 You are the PROSECUTOR in an adversarial review of a root-cause analysis. Your job \
 is to REFUTE the stated root cause — find the strongest reasons it might be WRONG, \
