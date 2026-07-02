@@ -339,6 +339,12 @@ async def lifespan(app: FastAPI):
         if get_settings().copilot_tenant_db.startswith(("postgres://", "postgresql://")) is False:
             log.warning("multi-tenant on SQLite is app-level isolated, not RLS-hard-isolated; "
                         "use Postgres + RLS for production tenant isolation")
+    # Background job worker: drains queued (webhook/SLO) investigations with retries
+    # + dead-letter, so a transient failure or restart doesn't silently drop them.
+    from app.jobqueue import make_job_queue, run_worker
+    global _JOBQ
+    _JOBQ = make_job_queue(get_settings().copilot_redis_url)
+    job_task = asyncio.create_task(run_worker(_JOBQ, _handle_job))
     # Proactive SLO-burn poller (opt-in): auto-open investigations before a page.
     slo_task: asyncio.Task | None = None
     if get_settings().copilot_slo_poller:
@@ -355,10 +361,11 @@ async def lifespan(app: FastAPI):
         slo_task = asyncio.create_task(poller.run())
         log.info("proactive SLO poller enabled")
     yield
-    if slo_task:
-        slo_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await slo_task
+    for _task in (slo_task, job_task):
+        if _task:
+            _task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await _task
     # Graceful shutdown: the config gate's exclusive writer waits for in-flight
     # turns to drain before tearing sessions down, so we don't kill MCP
     # subprocesses mid-investigation. Bounded so a stuck turn can't hang shutdown.
@@ -1235,6 +1242,29 @@ async def _post_to_slack(thread_id: str, title: str, result: TurnResult) -> None
         log.info("slack post skipped/failed (thread=%s): %s", thread_id, res.get("skipped") or res)
 
 
+# The background job queue (set in lifespan). Investigations are enqueued here so a
+# transient failure retries and a restart doesn't silently drop them.
+_JOBQ: Any = None
+
+
+async def _handle_job(job) -> None:
+    """Dispatch a queued job by kind. Raises on failure so the worker retries."""
+    if job.kind == "investigate":
+        await _run_triggered_investigation(job.payload)
+    else:
+        log.warning("unknown job kind: %s", job.kind)
+
+
+async def _enqueue_investigation(incident: dict) -> None:
+    """Queue a triggered/proactive investigation (falls back to a detached task if the
+    worker isn't up, e.g. under TestClient without lifespan)."""
+    from app.jobqueue import Job
+    if _JOBQ is not None:
+        await _JOBQ.enqueue(Job(kind="investigate", payload=incident, id=str(incident.get("id", ""))))
+    else:
+        asyncio.create_task(_run_triggered_investigation(incident))
+
+
 async def _run_triggered_investigation(incident: dict) -> None:
     thread_id = f"pd-{incident['id']}"
     title = incident.get("title") or thread_id
@@ -1268,7 +1298,7 @@ async def _slo_trigger(service: str, burn: dict) -> None:
         "service": service,
     }
     log.info("SLO poller opening investigation for %s (%s)", service, verdict)
-    await _run_triggered_investigation(incident)
+    await _enqueue_investigation(incident)
 
 
 @app.post("/remediate")
@@ -1378,7 +1408,7 @@ async def pagerduty_webhook(request: Request):
         return {"status": "accepted_no_llm", "incident": incident["id"]}
     if not _claim_delivery(raw):
         return {"status": "duplicate", "incident": incident["id"]}  # redelivery — already running
-    asyncio.create_task(_run_triggered_investigation(incident))
+    await _enqueue_investigation(incident)
     return {"status": "accepted", "incident": incident["id"]}
 
 
