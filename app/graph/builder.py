@@ -55,7 +55,9 @@ def make_guarded_tool_node(tools):
     inner = ToolNode(tools)
 
     async def guarded(state: AgentState) -> dict:
-        result = await inner.ainvoke(state)
+        from app import otel
+        with otel.span("mcp.tools"):
+            result = await inner.ainvoke(state)
         out: list = []
         for m in result.get("messages", []):
             if isinstance(m, ToolMessage):
