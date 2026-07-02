@@ -1,0 +1,73 @@
+# DevOps Copilot Helm values. Override with `helm install -f my-values.yaml`.
+
+image:
+  repository: ghcr.io/ankit25bcs10610/devops-copilot
+  tag: latest
+  pullPolicy: IfNotPresent
+
+replicaCount: 2  # >1 requires Postgres checkpointer + Redis (see config below)
+
+# Non-secret configuration → rendered into a ConfigMap and injected as env.
+config:
+  COPILOT_ENV: production
+  COPILOT_PROVIDER: anthropic
+  # Multi-instance state: point these at real backends when replicaCount > 1.
+  COPILOT_REDIS_URL: ""              # e.g. redis://redis:6379/0 (shared limiter+queue+spend)
+  COPILOT_CHECKPOINT_DB: ""         # e.g. postgresql://user@pg/copilot (shared session state)
+  COPILOT_RATE_LIMIT_PER_MIN: "120"
+  COPILOT_MAX_ITERATIONS: "8"
+  COPILOT_GLOBAL_TOKEN_CAP: "0"
+  OTEL_EXPORTER_OTLP_ENDPOINT: ""   # enable OpenTelemetry export when set
+
+# Secret env. Prefer an EXISTING secret (existingSecret) sourced from your secrets
+# manager / External Secrets Operator; the inline map is for dev only.
+secret:
+  existingSecret: ""                # name of a pre-created Secret with the keys below
+  data:
+    COPILOT_API_TOKEN: ""
+    ANTHROPIC_API_KEY: ""
+    COPILOT_SECRET_KEY: ""
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8000
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Liveness/readiness map to the app's probes (app/api/main.py).
+probes:
+  liveness: /healthz
+  readiness: /readyz
+
+# Persistent volume for the default SQLite checkpointer (single-instance only).
+# Not used when COPILOT_CHECKPOINT_DB is a postgres:// URL.
+persistence:
+  enabled: false
+  size: 1Gi
+  mountPath: /data
+
+serviceAccount:
+  create: true
+  name: ""
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
