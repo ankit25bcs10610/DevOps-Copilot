@@ -21,6 +21,10 @@ jobs:
         run: uv run mypy app
       - name: Pytest
         run: uv run pytest -q
+      - name: Prompt-injection red-team gate
+        # Scores the guardrails against an adversarial corpus (offline, no API key).
+        # Fails CI if injection detection regresses or benign telemetry is flagged.
+        run: uv run python -m evals.run_redteam
       - name: Golden-trajectory replay gate
         # Replays recorded incident cassettes offline (no API key). No-op until a
         # cassette is recorded (evals/cassettes/golden.json); fails on a regression.

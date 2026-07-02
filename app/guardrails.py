@@ -41,7 +41,8 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
         r"\b(call|invoke|run|execute|use)\b.{0,20}\b(create_pull_request|scale_deployment|"
         r"rollback_deployment|resolve_incident|tool)\b", re.I)),
     ("exfiltration", re.compile(
-        r"\b(send|post|upload|forward|email)\b.{0,30}\b(to )?(http|https|attacker|webhook|external)", re.I)),
+        r"\b(send|post|upload|forward|exfiltrate|email|transmit|leak)\b.{0,80}?"
+        r"\b(http|https|attacker|webhook|external|exfil|\S+\.(?:com|net|io|example))", re.I)),
 ]
 
 

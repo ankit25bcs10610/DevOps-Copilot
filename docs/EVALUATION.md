@@ -36,6 +36,26 @@ uv run python -m evals.run_golden
 CI runs the replay gate automatically once a cassette is committed under
 `evals/cassettes/`. See [`evals/cassettes/README.md`](../evals/cassettes/README.md).
 
+## Prompt-injection red-team gate (offline, no key)
+
+The guardrails (`app/guardrails.py`) are deterministic regex, so they're scored
+directly against an adversarial corpus — no LLM needed. `evals/redteam_corpus.yaml`
+holds indirect-injection attacks hidden in telemetry (log lines, commit messages,
+stack traces, incident text, config) **plus benign look-alikes** as false-positive
+controls. The harness reports the **detection rate** and **false-positive rate** and
+gates on both:
+
+```bash
+uv run python -m evals.run_redteam        # score + gate (exit 1 on regression)
+uv run python -m evals.run_redteam --json # machine-readable summary
+```
+
+This runs in CI on every push and is also asserted in `tests/test_redteam.py`, so a
+weakened guardrail (or a new attack the corpus captures) fails the build. Adding a
+case is the natural response to any injection attempt seen in the wild — it becomes a
+permanent regression test, and often hardens a pattern (this suite already caught a
+too-narrow exfiltration matcher).
+
 ## The learning loop
 
 Thumbs-down feedback captured in production (`POST /feedback` → `feedback.jsonl`) is the
