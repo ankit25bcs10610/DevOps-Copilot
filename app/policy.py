@@ -26,6 +26,16 @@ from typing import Literal
 
 Decision = Literal["allow", "notify", "approve"]
 Risk = Literal["low", "medium", "high"]
+Confidence = Literal["low", "medium", "high"]
+
+_CONF_RANK: dict[str, int] = {"low": 0, "medium": 1, "high": 2}
+
+# Minimum investigation confidence required to AUTO-approve a write of each risk
+# tier. A programmatic/automated approver (evals, a future auto-remediation loop,
+# a bot) must not rubber-stamp a consequential write that rests on thin evidence —
+# a human reviewer can still approve it explicitly. High-blast-radius actions
+# demand a correspondingly well-evidenced investigation.
+_MIN_AUTOAPPROVE_CONF: dict[str, str] = {"low": "low", "medium": "medium", "high": "high"}
 
 # tool name -> (decision, risk, why). Tools not listed default to allow/low
 # (read-only). Add a mutating tool here the moment its server is wired up, so the
@@ -111,3 +121,65 @@ def describe_action(tool_name: str, args: dict | None = None) -> str:
 # The approve-class tools — the canonical set the graph's approval gate keys on.
 # Re-exported as WRITE_TOOLS so existing imports keep working unchanged.
 APPROVE_TOOLS: set[str] = {t for t, (d, _, _) in _POLICY.items() if d == "approve"}
+
+
+# --------------------------------------------------------------------------- #
+# Confidence gate — don't let a low-evidence investigation AUTO-write.
+# Pure + testable; the single source of truth shared by the approval node (which
+# surfaces the gate to the human) and the session (which enforces it against
+# programmatic approvers).
+# --------------------------------------------------------------------------- #
+def evidence_confidence(evidence_count: int) -> Confidence:
+    """Map how much telemetry the agent gathered before proposing a write to a
+    coarse confidence tier. Deliberately conservative: a write proposed after one
+    tool result is 'low'."""
+    if evidence_count < 2:
+        return "low"
+    if evidence_count < 4:
+        return "medium"
+    return "high"
+
+
+def auto_approvable(risk: str, confidence: str) -> bool:
+    """True when a write of `risk` may be auto-approved at investigation `confidence`.
+    High-risk needs high confidence; medium needs medium+; low needs any."""
+    need = _MIN_AUTOAPPROVE_CONF.get(risk, "high")
+    return _CONF_RANK.get(confidence, 0) >= _CONF_RANK[need]
+
+
+def confidence_gate(tool_calls: list[dict] | None, evidence_count: int) -> dict:
+    """Assess whether the pending write(s) may be auto-approved given the evidence.
+
+    Returns {highest_risk, confidence, auto_approve_blocked, reason}. Only
+    approve-class calls are gated — read/notify calls never block. Used both to
+    warn the human (approval card) and to refuse a programmatic auto-approval."""
+    confidence = evidence_confidence(evidence_count)
+    approve_calls = [
+        c for c in (tool_calls or []) if requires_approval(c.get("name", ""), c.get("args"))
+    ]
+    if not approve_calls:
+        return {
+            "highest_risk": "low",
+            "confidence": confidence,
+            "auto_approve_blocked": False,
+            "reason": "",
+        }
+    highest = "low"
+    for c in approve_calls:
+        risk = classify(c.get("name", ""), c.get("args"))["risk"]
+        if _CONF_RANK[risk] > _CONF_RANK[highest]:
+            highest = risk
+    blocked = not auto_approvable(highest, confidence)
+    reason = (
+        f"{highest}-risk write proposed on {confidence}-confidence evidence "
+        f"({evidence_count} tool result{'' if evidence_count == 1 else 's'}); "
+        "auto-approval refused — needs explicit human review."
+        if blocked
+        else ""
+    )
+    return {
+        "highest_risk": highest,
+        "confidence": confidence,
+        "auto_approve_blocked": blocked,
+        "reason": reason,
+    }

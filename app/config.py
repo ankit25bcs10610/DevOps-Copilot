@@ -179,6 +179,11 @@ class Settings(BaseSettings):
     copilot_sandbox_cmd: str = "node checkout.test.js"
     # Wall-clock timeout (seconds) for each sandbox subprocess run.
     copilot_sandbox_timeout_s: int = 30
+    # Confidence gate: refuse to AUTO-approve a consequential write that rests on
+    # thin evidence (a human can still approve it explicitly). Protects programmatic
+    # approvers — evals, bots, a future auto-remediation loop — from rubber-stamping
+    # a high-risk action on a low-confidence investigation. true (default) | false.
+    copilot_confidence_gate: bool = True
 
     @field_validator("copilot_provider")
     @classmethod

@@ -1,5 +1,7 @@
 """CopilotSession pure helpers + the recursion_limit derivation."""
 
+import asyncio
+
 from langchain_core.messages import AIMessage, HumanMessage
 
 from app.config import get_settings
@@ -38,3 +40,39 @@ def test_describe_renders_each_node():
     )
     assert _describe("reflect", {"status": "done"})
     assert _describe("__interrupt__", None)
+
+
+def test_confidence_gate_blocks_programmatic_auto_approval(monkeypatch):
+    """auto=True approval of a gated (thin-evidence, high-risk) write is refused."""
+    s = CopilotSession(thread_id="gate")
+
+    async def _blocked():
+        return {"auto_approve_blocked": True, "reason": "high-risk on low confidence"}
+
+    monkeypatch.setattr(s, "_pending_gate", _blocked)
+    approved, reason = asyncio.run(s._apply_confidence_gate(True, "", auto=True))
+    assert approved is False
+    assert "confidence gate" in reason.lower()
+
+
+def test_confidence_gate_lets_human_approve(monkeypatch):
+    """A human (auto=False) is never blocked — they see the warning and decide."""
+    s = CopilotSession(thread_id="gate")
+
+    async def _blocked():  # would block, but human path must not consult it
+        raise AssertionError("human approval must not run the gate")
+
+    monkeypatch.setattr(s, "_pending_gate", _blocked)
+    approved, _ = asyncio.run(s._apply_confidence_gate(True, "", auto=False))
+    assert approved is True
+
+
+def test_confidence_gate_allows_well_evidenced_auto_approval(monkeypatch):
+    s = CopilotSession(thread_id="gate")
+
+    async def _ok():
+        return {"auto_approve_blocked": False, "reason": ""}
+
+    monkeypatch.setattr(s, "_pending_gate", _ok)
+    approved, _ = asyncio.run(s._apply_confidence_gate(True, "", auto=True))
+    assert approved is True

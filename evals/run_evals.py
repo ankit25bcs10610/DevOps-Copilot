@@ -48,9 +48,13 @@ async def _run_case(case: dict) -> dict:
     async with CopilotSession(thread_id=thread_id) as session:
         result = await session.ask(case["question"])
         full_trace += result.trace
-        # Auto-approve any pending write so evals are non-interactive.
+        # Auto-approve any pending write so evals are non-interactive. auto=True
+        # subjects these to the confidence gate — a write proposed on thin evidence
+        # is refused rather than rubber-stamped, exactly as a bot approver would be.
         while result.status == "awaiting_approval":
-            result = await session.resume(approved=True, reason="auto-approved in eval")
+            result = await session.resume(
+                approved=True, reason="auto-approved in eval", auto=True
+            )
             full_trace += result.trace
         answer = result.final_text
         report = result.report or {}

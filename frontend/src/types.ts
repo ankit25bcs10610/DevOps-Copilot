@@ -21,6 +21,10 @@ export interface ApprovalRequest {
   risk?: RiskTier;
   evidence_count?: number;
   confidence?: Confidence;
+  // Confidence gate: a programmatic approver would be refused this write (thin
+  // evidence for its risk). A human can still approve, but should scrutinize.
+  auto_approve_blocked?: boolean;
+  gate_reason?: string;
   actions: ProposedAction[];
 }
 
