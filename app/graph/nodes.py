@@ -15,7 +15,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from langgraph.types import interrupt
 from pydantic import BaseModel, Field
 
-from app import incident_memory, policy, replay
+from app import incident_memory, policy, replay, routing
 from app.config import get_settings
 from app.graph.prompts import (
     AGENT_SYSTEM,
@@ -156,8 +156,13 @@ def make_agent_node(tools):
     with unexecuted tool_calls (which would corrupt history / 400 on Anthropic).
     """
     settings = get_settings()
+    # Build both tiers up front so the agent can triage per request (model routing):
+    # the main reasoning model for real incidents, the cheap fast model for simple
+    # informational lookups. Falls back to main on any doubt (see app/routing.py).
     llm_tools = get_llm().bind_tools(tools)
     llm_plain = get_llm()  # no tools — used to force a final answer at the cap
+    llm_tools_fast = get_llm(fast=True).bind_tools(tools)
+    llm_plain_fast = get_llm(fast=True)
 
     def agent_node(state: AgentState) -> dict:
         iteration = state.get("iteration", 0) + 1
@@ -167,6 +172,12 @@ def make_agent_node(tools):
         # both stop the agent<->tools loop without stranding tool calls.
         over_budget = _over_token_budget(state.get("tokens_used", 0), settings)
         at_cap = iteration >= settings.copilot_max_iterations or over_budget
+
+        # Triage: a clearly-informational request runs on the fast model; anything
+        # incident-shaped stays on the main reasoning model.
+        fast = routing.use_fast_model(_last_user_text(state), settings.copilot_model_routing)
+        tools_llm = llm_tools_fast if fast else llm_tools
+        plain_llm = llm_plain_fast if fast else llm_plain
 
         # The agent system prompt + plan is the stable, cacheable prefix (constant
         # across this run's loop iterations); per-iteration text (cap notice or
@@ -178,7 +189,7 @@ def make_agent_node(tools):
                 f"You have reached the {limit}. Do NOT call any tools. "
                 "Summarize the root cause and your recommendation now."
             )
-            resp = llm_plain.invoke([cached_system(stable, volatile), *state["messages"]])
+            resp = plain_llm.invoke([cached_system(stable, volatile), *state["messages"]])
         else:
             # The reflect node judged the last answer incomplete — tell the agent
             # exactly what to close so it doesn't repeat itself.
@@ -188,7 +199,7 @@ def make_agent_node(tools):
                 if feedback
                 else ""
             )
-            resp = llm_tools.invoke([cached_system(stable, volatile), *state["messages"]])
+            resp = tools_llm.invoke([cached_system(stable, volatile), *state["messages"]])
 
         tokens = _log_usage("agent", resp)
         return {"messages": [resp], "iteration": iteration, "tokens_used": tokens}
