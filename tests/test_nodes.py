@@ -244,6 +244,8 @@ def test_report_node_uses_structured_output(monkeypatch):
             raise AssertionError("text-parse path must not run on structured success")
 
     monkeypatch.setattr(nodes, "get_llm", lambda fast=False: _FakeLLM())
+    from app.config import get_settings
+    monkeypatch.setattr(get_settings(), "copilot_adversarial_critique", False)  # isolate structured path
     node = make_report_node()
     out = node({"messages": [HumanMessage(content="why 500s?"),
                              AIMessage(content="root cause found")]})
@@ -276,6 +278,8 @@ def test_report_node_falls_back_to_text_parse_on_structured_error(monkeypatch):
             return SimpleNamespace(content=json_text, usage_metadata={"total_tokens": 5})
 
     monkeypatch.setattr(nodes, "get_llm", lambda fast=False: _FakeLLM())
+    from app.config import get_settings
+    monkeypatch.setattr(get_settings(), "copilot_adversarial_critique", False)  # isolate fallback path
     node = make_report_node()
     out = node({"messages": [HumanMessage(content="why 500s?"),
                              AIMessage(content="a deploy caused it")]})
@@ -518,3 +522,95 @@ def test_verify_node_no_fix_finalizes_without_calling_llm(monkeypatch):
     out = node(state)
     assert out["status"] == "done"
     assert out["report"]["verification"]["verdict"] == "no_fix_proposed"
+
+
+# --- adversarial RCA critique --------------------------------------------- #
+from app.graph.nodes import (  # noqa: E402
+    _apply_critique,
+    _judge_critique,
+    _parse_objections,
+    _parse_rebuttals,
+)
+
+
+def test_parse_objections_and_rebuttals():
+    objs = _parse_objections('{"objections":[{"claim":"correlation not causation","severity":"high"},'
+                             '{"claim":"minor","severity":"bogus"}]}')
+    assert objs[0]["severity"] == "high"
+    assert objs[1]["severity"] == "low"  # bad enum coerced
+    reb = _parse_rebuttals('{"rebuttals":[{"objection":"x","rebutted":true,"evidence":"log line"}]}')
+    assert reb[0]["rebutted"] is True
+
+
+def test_judge_critique_refuted_on_standing_high():
+    objs = [{"claim": "wrong service", "severity": "high"}]
+    reb = [{"objection": "wrong service", "rebutted": False}]
+    assert _judge_critique(objs, reb)["verdict"] == "refuted"
+
+
+def test_judge_critique_upheld_when_all_rebutted():
+    objs = [{"claim": "a", "severity": "high"}, {"claim": "b", "severity": "medium"}]
+    reb = [{"rebutted": True}, {"rebutted": True}]
+    assert _judge_critique(objs, reb)["verdict"] == "upheld"
+
+
+def test_judge_critique_missing_rebuttal_counts_as_standing():
+    objs = [{"claim": "a", "severity": "medium"}]
+    assert _judge_critique(objs, [])["verdict"] == "weakened"  # no rebuttal -> stands
+
+
+def test_apply_critique_refuted_abstains():
+    r = {"calibrated_confidence": "high", "root_cause": "x"}
+    out = _apply_critique(r, {"verdict": "refuted",
+                              "standing_objections": [{"claim": "unruled-out cause", "severity": "high"}]})
+    assert out["abstained"] is True
+    assert out["calibrated_confidence"] == "low"
+    assert any("Adversarial" in n for n in out["needs"])
+
+
+def test_apply_critique_weakened_downgrades_one_notch():
+    out = _apply_critique({"calibrated_confidence": "high"}, {"verdict": "weakened", "standing_objections": []})
+    assert out["calibrated_confidence"] == "medium"
+
+
+def test_apply_critique_upheld_leaves_confidence():
+    out = _apply_critique({"calibrated_confidence": "high"}, {"verdict": "upheld", "standing_objections": []})
+    assert out["calibrated_confidence"] == "high"
+    assert out.get("abstained") is not True
+
+
+def test_adversarial_critique_refutes_when_defender_cannot_rebut():
+    from app.graph.nodes import _adversarial_critique
+
+    calls: list[int] = []
+
+    class _LLM:
+        def invoke(self, _msgs):
+            calls.append(1)
+            if len(calls) == 1:  # prosecutor
+                return SimpleNamespace(
+                    content='{"objections":[{"claim":"an alternative cause was not ruled out","severity":"high"}]}',
+                    usage_metadata={"total_tokens": 3})
+            return SimpleNamespace(  # defender
+                content='{"rebuttals":[{"objection":"an alternative cause was not ruled out","rebutted":false,"evidence":"no data"}]}',
+                usage_metadata={"total_tokens": 2})
+
+    out = _adversarial_critique(_LLM(), "why?", {"root_cause": "X", "summary": "s"}, "digest")
+    assert out["verdict"] == "refuted"
+    assert out["tokens"] == 5
+    assert len(calls) == 2
+
+
+def test_adversarial_critique_upheld_and_skips_defender_when_no_objections():
+    from app.graph.nodes import _adversarial_critique
+
+    calls: list[int] = []
+
+    class _LLM:
+        def invoke(self, _msgs):
+            calls.append(1)
+            return SimpleNamespace(content='{"objections":[]}', usage_metadata={"total_tokens": 4})
+
+    out = _adversarial_critique(_LLM(), "why?", {"root_cause": "X"}, "digest")
+    assert out["verdict"] == "upheld"
+    assert len(calls) == 1  # defender not called when nothing to refute

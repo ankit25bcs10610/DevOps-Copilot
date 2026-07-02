@@ -102,6 +102,26 @@ export function RcaReportCard({ report }: { report: RcaReport }) {
             </div>
           )}
 
+          {report.critique && report.critique.verdict !== "upheld" && (
+            <div className={`rca__critique rca__critique--${report.critique.verdict}`}>
+              <div className="rca__critique-top">
+                <Icon name="alert" size={14} className="rca__hyp-icon" />
+                <span>
+                  Adversarial review: root cause <strong>{report.critique.verdict}</strong>
+                </span>
+              </div>
+              {report.critique.standing_objections && report.critique.standing_objections.length > 0 && (
+                <ul className="rca__needs">
+                  {report.critique.standing_objections.map((o, i) => (
+                    <li key={i}>
+                      <em>{o.severity}</em> — {o.claim}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
           {report.hypotheses.length > 0 && (
             <div className="rca__section">
               <h4 className="rca__h">Hypotheses</h4>

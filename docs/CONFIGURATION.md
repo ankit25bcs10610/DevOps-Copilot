@@ -23,6 +23,7 @@ UI** — those overrides are in-memory only, not persisted across restarts.
 | `COPILOT_CONFIDENCE_GATE` | `true` | Refuse programmatic auto-approval of a high-risk write on thin evidence (humans can still approve) |
 | `COPILOT_LEARN_INCIDENTS` | `true` | After a confident RCA, append a runbook to the learned corpus so future runs warm-start from it |
 | `COPILOT_LEARNED_CORPUS` | *(root)* | Path to the learned-incidents JSON (empty = `learned_incidents.json` in the project root) |
+| `COPILOT_ADVERSARIAL_CRITIQUE` | `true` | Prosecutor/Defender panel stress-tests the root cause; abstains/downgrades on a standing objection |
 | `COPILOT_CHECKPOINT_DB` | `./copilot_checkpoints.sqlite` | SQLite path or a `postgres://…` URL |
 
 ## Data sources & connectors
