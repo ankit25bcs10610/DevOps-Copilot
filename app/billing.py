@@ -89,3 +89,52 @@ async def sync_usage_to_stripe(store: Any, client: StripeClient, limit: int = 50
             log.exception("stripe meter event failed (org=%s)", r["org_id"])
     await store.mark_synced(synced)
     return len(synced)
+
+
+# --------------------------------------------------------------------------- #
+# Inbound webhooks: Stripe subscription events → tenant plan (store.set_plan).
+# --------------------------------------------------------------------------- #
+_PLANS = {"free", "team", "enterprise"}
+
+
+def verify_stripe_signature(payload: bytes, sig_header: str, secret: str,
+                            now: int | None = None, tolerance: int = 300) -> bool:
+    """Verify a Stripe-Signature header (scheme: `t=<ts>,v1=<hmac>`) over
+    `"{t}.{payload}"` with HMAC-SHA256. Pure; `now` injectable for tests. When no
+    secret is configured, verification fails closed."""
+    import hashlib
+    import hmac
+
+    if not secret or not sig_header:
+        return False
+    parts = dict(p.split("=", 1) for p in sig_header.split(",") if "=" in p)
+    ts, v1 = parts.get("t", ""), parts.get("v1", "")
+    if not ts or not v1:
+        return False
+    if tolerance and now is not None:
+        try:
+            if abs(now - int(ts)) > tolerance:
+                return False  # replayed/stale
+        except ValueError:
+            return False
+    signed = f"{ts}.".encode() + payload
+    expected = hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, v1)
+
+
+def plan_from_stripe_event(event: dict) -> tuple[str, str] | None:
+    """Map a Stripe subscription event to (org_id, plan). The org id comes from the
+    subscription's metadata.org_id; the plan from metadata.plan (or 'free' on cancel).
+    Returns None for events we don't act on. Pure."""
+    etype = event.get("type", "")
+    obj = (event.get("data") or {}).get("object") or {}
+    meta = obj.get("metadata") or {}
+    org_id = (meta.get("org_id") or "").strip()
+    if not org_id:
+        return None
+    if etype == "customer.subscription.deleted":
+        return org_id, "free"
+    if etype in ("customer.subscription.created", "customer.subscription.updated"):
+        plan = (meta.get("plan") or "").strip().lower()
+        return (org_id, plan) if plan in _PLANS else None
+    return None
