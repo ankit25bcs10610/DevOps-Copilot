@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from typing import Any
 import hashlib
 import hmac
 import json
@@ -215,18 +216,31 @@ def _client_ip(request: Request, trust_proxy: bool) -> str:
     return request.client.host if request.client else "unknown"
 
 
+# The active limiter: in-memory (backed by _RL so tests can clear it) unless
+# COPILOT_REDIS_URL selects the shared Redis backend. Built lazily so config/env
+# overrides and test resets are honored.
+_LIMITER: Any = None
+
+
+def _get_limiter() -> Any:
+    global _LIMITER
+    if _LIMITER is None:
+        from app.ratelimit import InMemoryRateLimiter, make_rate_limiter
+        url = get_settings().copilot_redis_url
+        _LIMITER = make_rate_limiter(url, store=_RL) if url.strip() else InMemoryRateLimiter(_RL)
+    return _LIMITER
+
+
+def _reset_limiter() -> None:
+    """Drop the cached limiter (tests re-read config/env)."""
+    global _LIMITER
+    _LIMITER = None
+    _RL.clear()
+
+
 async def _rate_limited(ip: str, limit_per_min: int) -> bool:
-    now = time.time()
     async with _RL_LOCK:
-        if len(_RL) > _RL_MAX_KEYS:  # bound memory: drop entries from elapsed windows
-            for k in [k for k, (start, _) in _RL.items() if now - start >= 60]:
-                del _RL[k]
-        start, count = _RL.get(ip, (now, 0))
-        if now - start >= 60:  # window rolled over
-            start, count = now, 0
-        count += 1
-        _RL[ip] = (start, count)
-        return count > limit_per_min
+        return await _get_limiter().over_limit(ip, limit_per_min, window=60)
 
 
 class LimitsMiddleware(BaseHTTPMiddleware):
