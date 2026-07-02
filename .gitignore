@@ -16,6 +16,7 @@ venv/
 copilot_checkpoints.sqlite*
 feedback.jsonl
 audit.jsonl
+learned_incidents.json
 
 # OS / IDE
 .DS_Store

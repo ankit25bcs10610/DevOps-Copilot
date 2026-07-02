@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.types import interrupt
@@ -790,6 +791,18 @@ def _parse_verification(text: str, has_fix: bool) -> dict:
     return _normalize_verification(data, has_fix)
 
 
+def _maybe_learn(request: str, report: dict) -> None:
+    """Best-effort: record a confidently-resolved investigation as a reusable runbook
+    in the incident-memory corpus, so future similar incidents warm-start from it.
+    Never fatal to a finished run."""
+    try:
+        rec = incident_memory.learn_from_report(request, report, date=time.strftime("%Y-%m-%d"))
+        if rec:
+            log.info("learned incident into corpus: %s", rec.get("id"))
+    except Exception:  # noqa: BLE001 — learning must never break a finished run
+        log.warning("incident learning failed (non-fatal)", exc_info=True)
+
+
 def make_verify_node():
     """Node: verify that the proposed fix would resolve the incident. Runs once after
     the report node. Emits report["verification"] and, when a fix clearly misses the
@@ -799,11 +812,13 @@ def make_verify_node():
 
     def verify_node(state: AgentState) -> dict:
         report = state.get("report") or {}
-        # Feature disabled -> behave exactly as before (report was terminal).
+        request = _last_user_text(state)
+        # Feature disabled -> behave as before (report was terminal), but still
+        # capture the resolved incident into memory.
         if not settings.copilot_verify_fix:
+            _maybe_learn(request, report)
             return {"status": "done"}
 
-        request = _last_user_text(state)
         fix = _extract_proposed_fix(state, report)
         if not fix["has_fix"]:
             # Nothing to verify (informational request, or cause explained without a
@@ -814,6 +829,7 @@ def make_verify_node():
             )
             report["verification"] = verification
             report["postmortem"] = _render_postmortem(report, request)
+            _maybe_learn(request, report)
             return {"verification": verification, "report": report, "status": "done"}
 
         digest = _evidence_digest(state)
@@ -896,6 +912,7 @@ def make_verify_node():
                 "status": "investigating",
                 "tokens_used": tokens,
             }
+        _maybe_learn(request, report)
         return {"verification": verification, "report": report, "status": "done", "tokens_used": tokens}
 
     return verify_node
