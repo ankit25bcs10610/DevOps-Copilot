@@ -45,3 +45,41 @@ def test_approve_tools_set_matches_policy():
     assert "scale_deployment" in policy.APPROVE_TOOLS
     # notify-class tools are NOT in the approval set
     assert "acknowledge_incident" not in policy.APPROVE_TOOLS
+
+
+# --- confidence gate ------------------------------------------------------- #
+def test_evidence_confidence_tiers():
+    assert policy.evidence_confidence(0) == "low"
+    assert policy.evidence_confidence(1) == "low"
+    assert policy.evidence_confidence(2) == "medium"
+    assert policy.evidence_confidence(4) == "high"
+
+
+def test_auto_approvable_by_risk_and_confidence():
+    # High-risk needs high confidence; low-risk needs any.
+    assert policy.auto_approvable("high", "high") is True
+    assert policy.auto_approvable("high", "medium") is False
+    assert policy.auto_approvable("medium", "medium") is True
+    assert policy.auto_approvable("medium", "low") is False
+    assert policy.auto_approvable("low", "low") is True
+
+
+def test_confidence_gate_blocks_high_risk_on_thin_evidence():
+    calls = [{"name": "scale_deployment", "args": {"replicas": 0}}]  # high risk
+    gate = policy.confidence_gate(calls, evidence_count=1)  # low confidence
+    assert gate["highest_risk"] == "high"
+    assert gate["confidence"] == "low"
+    assert gate["auto_approve_blocked"] is True
+    assert gate["reason"]
+
+
+def test_confidence_gate_allows_high_risk_with_strong_evidence():
+    calls = [{"name": "scale_deployment", "args": {"replicas": 2}}]  # high risk
+    gate = policy.confidence_gate(calls, evidence_count=5)  # high confidence
+    assert gate["auto_approve_blocked"] is False
+
+
+def test_confidence_gate_ignores_reads():
+    gate = policy.confidence_gate([{"name": "search_logs", "args": {}}], evidence_count=0)
+    assert gate["auto_approve_blocked"] is False
+    assert gate["highest_risk"] == "low"

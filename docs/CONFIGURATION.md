@@ -20,6 +20,7 @@ UI** — those overrides are in-memory only, not persisted across restarts.
 | `COPILOT_SANDBOX_VERIFY` | `false` | Prove a fix by applying its `patch` to a throwaway repo copy and running a reproducer (executes model patch — off by default) |
 | `COPILOT_SANDBOX_CMD` | `node checkout.test.js` | Reproducer command run before/after the patch (operator-set) |
 | `COPILOT_SANDBOX_TIMEOUT_S` | `30` | Wall-clock timeout per sandbox subprocess run |
+| `COPILOT_CONFIDENCE_GATE` | `true` | Refuse programmatic auto-approval of a high-risk write on thin evidence (humans can still approve) |
 | `COPILOT_CHECKPOINT_DB` | `./copilot_checkpoints.sqlite` | SQLite path or a `postgres://…` URL |
 
 ## Data sources & connectors

@@ -14,6 +14,7 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.errors import GraphRecursionError
 from langgraph.types import Command
 
+from app import policy
 from app.config import get_settings
 from app.graph.builder import build_graph, make_checkpointer
 from app.mcp.client import load_mcp_tools
@@ -86,8 +87,15 @@ class CopilotSession:
         """Start a new investigation turn (non-streaming; used by CLI/evals)."""
         return await self._drive({"messages": [HumanMessage(content=question)]})
 
-    async def resume(self, approved: bool, reason: str = "") -> TurnResult:
-        """Resume a turn that paused for human approval (non-streaming)."""
+    async def resume(self, approved: bool, reason: str = "", auto: bool = False) -> TurnResult:
+        """Resume a turn that paused for human approval (non-streaming).
+
+        `auto=True` marks a programmatic approver (evals, a bot, a future
+        auto-remediation loop). Such an approval is refused by the confidence gate
+        when the pending write is high-risk but rests on thin evidence — only an
+        explicit human (auto=False) may approve it. Defaults to human.
+        """
+        approved, reason = await self._apply_confidence_gate(approved, reason, auto)
         return await self._drive(Command(resume={"approved": approved, "reason": reason}))
 
     async def ask_stream(self, question: str) -> AsyncIterator[dict]:
@@ -95,12 +103,41 @@ class CopilotSession:
         async for ev in self._drive_events({"messages": [HumanMessage(content=question)]}):
             yield ev
 
-    async def resume_stream(self, approved: bool, reason: str = "") -> AsyncIterator[dict]:
+    async def resume_stream(
+        self, approved: bool, reason: str = "", auto: bool = False
+    ) -> AsyncIterator[dict]:
         """Like resume(), but yields progress events as they happen (for SSE)."""
+        approved, reason = await self._apply_confidence_gate(approved, reason, auto)
         async for ev in self._drive_events(
             Command(resume={"approved": approved, "reason": reason})
         ):
             yield ev
+
+    async def _apply_confidence_gate(
+        self, approved: bool, reason: str, auto: bool
+    ) -> tuple[bool, str]:
+        """Turn a programmatic auto-approval into a rejection when the pending write
+        is too consequential for the evidence gathered. Human approvals and all
+        rejections pass through unchanged; no-op when the gate is disabled."""
+        if not (approved and auto and get_settings().copilot_confidence_gate):
+            return approved, reason
+        gate = await self._pending_gate()
+        if gate["auto_approve_blocked"]:
+            return False, f"Auto-approval blocked by confidence gate: {gate['reason']}"
+        return approved, reason
+
+    async def _pending_gate(self) -> dict:
+        """Recompute the confidence gate from the paused state (same messages the
+        approval node saw), so enforcement matches what the human was shown."""
+        snapshot = await self._graph.aget_state(self._config)
+        messages = snapshot.values.get("messages", [])
+        tool_calls: list = []
+        for m in reversed(messages):
+            if isinstance(m, AIMessage) and getattr(m, "tool_calls", None):
+                tool_calls = m.tool_calls
+                break
+        evidence_count = sum(1 for m in messages if isinstance(m, ToolMessage))
+        return policy.confidence_gate(tool_calls, evidence_count)
 
     async def _drive_events(self, graph_input: Any) -> AsyncIterator[dict]:
         """Stream the graph as a sequence of events:

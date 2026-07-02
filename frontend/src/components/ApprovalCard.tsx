@@ -23,6 +23,17 @@ export function ApprovalCard({ request, disabled, onDecision }: Props) {
         <span className="approval__msg">{request.message}</span>
       </div>
 
+      {request.auto_approve_blocked && (
+        <div className="approval__gate" role="alert">
+          <Icon name="alert" size={14} />
+          <span>
+            <strong>Confidence gate:</strong>{" "}
+            {request.gate_reason ||
+              "This write rests on thin evidence for its risk — an automated approver would be refused. Review carefully before approving."}
+          </span>
+        </div>
+      )}
+
       {typeof request.evidence_count === "number" && (
         <div className={`approval__evidence approval__evidence--${request.confidence ?? "low"}`}>
           <Icon name="search" size={13} />

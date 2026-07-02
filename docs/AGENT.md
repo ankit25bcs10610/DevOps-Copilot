@@ -45,6 +45,11 @@ The defining safety property: **the agent asks permission before it changes anyt
   approves a hidden write bundled with reads.
 - The routing (`app/graph/edges.py`) **cannot** reach the tool executor for an
   approve-class action without passing approval first (asserted in `tests/test_edges.py`).
+- A **confidence gate** (`policy.confidence_gate`, `COPILOT_CONFIDENCE_GATE`) refuses a
+  *programmatic* auto-approval of a consequential write that rests on thin evidence — a
+  high-risk write needs a high-confidence (well-evidenced) investigation to be
+  auto-approved. Evals, bots, and any future auto-remediation loop are held to this;
+  a human reviewer still sees the warning and can approve explicitly.
 - On rejection, each `tool_call_id` is answered with a `ToolMessage` (keeping history
   valid) and control returns to the agent to find another path.
 - The pause is **resumable across separate HTTP requests** — state is checkpointed, so
