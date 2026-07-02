@@ -394,6 +394,10 @@ async def require_auth(request: Request) -> None:
     # shared bearer token — PagerDuty/Slack don't send it.
     if request.url.path.startswith("/webhooks/"):
         return
+    # SCIM provisioning authenticates with its own IdP-issued bearer token, checked
+    # in the handler (not the shared app token).
+    if request.url.path.startswith("/scim/"):
+        return
     # Self-serve signup is how a new tenant GETS its first credential, so it can't
     # require one. It stays out of _OPEN_PATHS so the IP rate-limiter still applies
     # (abuse guard); the handler itself enforces multi-tenant + the enabled flag.
@@ -1257,6 +1261,52 @@ async def admin_set_plan(req: SetPlanRequest) -> dict:
 # but still IP rate-limited. Always provisions the FREE plan; upgrades go through
 # billing/admin so signup can't self-assign a paid tier.
 # --------------------------------------------------------------------------- #
+def _scim_guard(request: Request) -> str:
+    """Authenticate a SCIM request via COPILOT_SCIM_TOKEN and return the target org.
+    Raises 403 when SCIM is unconfigured, 401 on a bad token."""
+    s = get_settings()
+    if not (s.copilot_scim_token and s.copilot_scim_org):
+        raise HTTPException(403, "SCIM provisioning is not configured.")
+    auth = request.headers.get("authorization", "")
+    token = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
+    if token != s.copilot_scim_token:
+        raise HTTPException(401, "Invalid SCIM token.")
+    return s.copilot_scim_org
+
+
+@app.post("/scim/v2/Users", status_code=201)
+async def scim_create_user(request: Request) -> dict:
+    """SCIM 2.0 provisioning: create a user + org membership from an IdP push."""
+    from app.tenancy import scim
+    org_id = _scim_guard(request)
+    payload = scim.parse_scim_user(await request.json())
+    if not payload["email"]:
+        raise HTTPException(400, "SCIM user requires userName (email).")
+    store = tenant_auth.get_store()
+    user = await store.get_user_by_email(payload["email"]) or await store.create_user(payload["email"])
+    await store.add_member(org_id, user.id, get_settings().copilot_scim_default_role)
+    audit.record("scim.user_provisioned", org_id=org_id, email=payload["email"])
+    return scim.to_scim_user(user.id, user.email, active=True,
+                             role=get_settings().copilot_scim_default_role)
+
+
+@app.api_route("/scim/v2/Users/{email}", methods=["PATCH", "DELETE"])
+async def scim_deprovision_user(email: str, request: Request) -> dict:
+    """SCIM 2.0 deprovisioning: remove the user's membership in the SCIM org."""
+    from app.tenancy import scim
+    org_id = _scim_guard(request)
+    # DELETE always deprovisions; PATCH deprovisions when it sets active=false.
+    if request.method == "PATCH":
+        body = await request.json()
+        if not scim.is_deprovision(body):
+            raise HTTPException(400, "Unsupported SCIM PATCH (only active=false is handled).")
+    store = tenant_auth.get_store()
+    user = await store.get_user_by_email(email.strip().lower())
+    removed = await store.remove_member(org_id, user.id) if user else False
+    audit.record("scim.user_deprovisioned", org_id=org_id, email=email, removed=removed)
+    return {"deprovisioned": removed, "email": email}
+
+
 @app.post("/signup")
 async def signup(req: SignupRequest) -> dict:
     s = get_settings()

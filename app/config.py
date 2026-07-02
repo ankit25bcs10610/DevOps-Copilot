@@ -146,6 +146,12 @@ class Settings(BaseSettings):
     # provisions the free plan (upgrades go through billing). Disable in locked-down
     # deployments to require admin-side provisioning (CLI / /admin).
     copilot_signup_enabled: bool = True
+    # SCIM 2.0 provisioning (enterprise SSO): a bearer token the IdP presents to the
+    # /scim/v2/Users endpoints, scoped to one org. Empty = SCIM disabled (403).
+    # Authentication itself is OIDC/JWT via supabase_jwks_url (app/tenancy/supabase_auth.py).
+    copilot_scim_token: str = ""
+    copilot_scim_org: str = ""
+    copilot_scim_default_role: str = "responder"
 
     # --- Agent behavior ---
     # Max agent (LLM) calls per turn — bounds the agent<->tools loop.
