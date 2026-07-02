@@ -493,6 +493,14 @@ class FeedbackRequest(BaseModel):
     question: str = ""
 
 
+class RemediateRequest(BaseModel):
+    action: str                  # reversible only: rollback_deployment | restart_deployment
+    target: str                  # deployment/service name
+    confidence: str = "low"      # investigation confidence; must be "high" to act
+    reason: str = ""
+    namespace: str = ""
+
+
 # --- admin / tenant-management request bodies (multi-tenant) --------------- #
 class CreateApiKeyRequest(BaseModel):
     name: str = ""
@@ -1247,6 +1255,52 @@ async def _slo_trigger(service: str, burn: dict) -> None:
     }
     log.info("SLO poller opening investigation for %s (%s)", service, verdict)
     await _run_triggered_investigation(incident)
+
+
+@app.post("/remediate")
+async def remediate(req: RemediateRequest) -> dict:
+    """Progressive-autonomy remediation: apply a REVERSIBLE fix, watch the signal,
+    auto-revert on regression. Doubly gated — 403 unless COPILOT_AUTONOMY, and a
+    dry-run unless COPILOT_AUTONOMY_DRYRUN=false — and only on high confidence."""
+    from app.autonomy import AutonomyController, RemediationPlan, is_eligible
+    from app.mcp.servers.datadog import server as _dd
+    from app.mcp.servers.kubernetes import server as _k8s
+
+    settings = get_settings()
+    if not settings.copilot_autonomy:
+        raise HTTPException(403, "Autonomous remediation is disabled (set COPILOT_AUTONOMY=true).")
+    ok, why = is_eligible(req.action, req.confidence, settings.copilot_autonomy)
+    if not ok:
+        raise HTTPException(400, f"Ineligible for autonomous remediation: {why}")
+
+    action_fns = {
+        "rollback_deployment": _k8s.rollback_deployment,
+        "restart_deployment": _k8s.restart_deployment,
+    }
+
+    async def _execute(action: str, target: str) -> dict:
+        return action_fns[action](target, req.namespace)
+
+    async def _revert(action: str, target: str) -> dict:
+        return action_fns[action](target, req.namespace)
+
+    controller = AutonomyController(
+        observe_fn=lambda svc: _dd.compute_burn_rate(svc),
+        execute_fn=_execute,
+        revert_fn=_revert,
+        dry_run=settings.copilot_autonomy_dryrun,
+        watch_s=settings.copilot_autonomy_watch_s,
+    )
+    # A rollback's compensating action is a restart-to-current; a restart has none.
+    revert = "restart_deployment" if req.action == "rollback_deployment" else None
+    plan = RemediationPlan(
+        action=req.action, target=req.target, reason=req.reason,
+        revert_action=revert, namespace=req.namespace,
+    )
+    result = await controller.remediate(plan)
+    audit.record("autonomy.remediation", action=req.action, target=req.target,
+                 status=result.get("status"), dry_run=settings.copilot_autonomy_dryrun)
+    return result
 
 
 async def _resume_triggered(thread_id: str, approved: bool) -> None:
