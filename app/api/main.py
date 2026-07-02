@@ -450,13 +450,57 @@ def _scoped(thread_id: str) -> str:
     return f"{cfg.org_id}:{thread_id}" if cfg else thread_id
 
 
+# Fleet-wide spend tracker (global token ceiling across all investigations).
+_SPEND: Any = None
+
+
+def _get_spend() -> Any:
+    global _SPEND
+    if _SPEND is None:
+        from app.spend import make_spend_tracker
+        s = get_settings()
+        _SPEND = make_spend_tracker(s.copilot_redis_url, s.copilot_global_spend_window_s)
+    return _SPEND
+
+
+async def _record_spend(tokens: int) -> None:
+    """Add a turn's tokens to the fleet-wide counter + warn past the alert threshold."""
+    s = get_settings()
+    if s.copilot_global_token_cap <= 0 or not tokens:
+        return
+    try:
+        from app.spend import alert_due
+        total = await _get_spend().record(tokens)
+        if alert_due(total, s.copilot_global_token_cap, s.copilot_global_spend_alert):
+            log.warning("fleet spend at %d/%d tokens (>= %.0f%% of cap)",
+                        total, s.copilot_global_token_cap, s.copilot_global_spend_alert * 100)
+    except Exception:  # noqa: BLE001 — spend accounting must never break a request
+        log.warning("global spend record failed", exc_info=True)
+
+
+async def _meter_and_spend(tokens: int, idem: str = "") -> None:
+    """Record a completed investigation to both the per-tenant meter and the
+    fleet-wide spend counter."""
+    await metering.record_investigation(tokens, idem=idem)
+    await _record_spend(tokens)
+
+
 async def quota_gate() -> None:
-    """Route dependency: block a new investigation when the tenant is over its
-    monthly plan quota (402). No-op in single-tenant mode."""
+    """Route dependency: block a new investigation when the tenant is over its monthly
+    plan quota (402), or when the FLEET-WIDE token cap is reached (429). No-op in
+    single-tenant mode / when the global cap is off."""
     if await metering.over_quota():
         raise HTTPException(
             402, "Monthly investigation quota reached for your plan — upgrade to continue."
         )
+    s = get_settings()
+    if s.copilot_global_token_cap > 0:
+        from app.spend import over_cap
+        if over_cap(await _get_spend().total(), s.copilot_global_token_cap):
+            raise HTTPException(
+                429, "Fleet-wide token budget reached — investigations are paused. "
+                "Try again after the budget window rolls over."
+            )
 
 
 app = FastAPI(
@@ -840,7 +884,7 @@ async def chat(req: ChatRequest) -> ChatResponse:
             if result.status == "awaiting_approval":
                 _AWAITING.add(tid)
             elif result.status == "completed":
-                await metering.record_investigation(result.tokens_used)
+                await _meter_and_spend(result.tokens_used)
     except HTTPException:
         raise  # 409/4xx should surface as real HTTP errors, not a 200 error body
     except Exception as exc:  # noqa: BLE001 — surface a clean error to the UI
@@ -877,7 +921,7 @@ async def approve(req: ApproveRequest) -> ChatResponse:
             else:
                 _AWAITING.discard(tid)
                 if result.status == "completed":
-                    await metering.record_investigation(result.tokens_used)
+                    await _meter_and_spend(result.tokens_used)
         except Exception as exc:  # noqa: BLE001
             log.exception("approve/resume failed (thread=%s)", tid)
             return ChatResponse(
@@ -952,7 +996,7 @@ async def chat_stream(req: ChatRequest):
                             _AWAITING.add(tid)
                         elif t == "done":
                             _AWAITING.discard(tid)
-                            await metering.record_investigation(ev.get("tokens_used", 0))
+                            await _meter_and_spend(ev.get("tokens_used", 0))
                         yield {"data": json.dumps(_stream_payload(req.thread_id, ev))}
                 except Exception as exc:  # noqa: BLE001
                     log.exception("chat stream failed (thread=%s)", tid)
@@ -1010,7 +1054,7 @@ async def approve_stream(req: ApproveRequest):
                             _AWAITING.add(tid)
                         elif t == "done":
                             _AWAITING.discard(tid)
-                            await metering.record_investigation(ev.get("tokens_used", 0))
+                            await _meter_and_spend(ev.get("tokens_used", 0))
                         yield {"data": json.dumps(_stream_payload(req.thread_id, ev))}
                 except Exception as exc:  # noqa: BLE001
                     log.exception("approve stream failed (thread=%s)", tid)
@@ -1283,7 +1327,7 @@ async def _run_triggered_investigation(incident: dict) -> None:
             elif result.status == "completed":
                 # Meter the triggered path the same as the interactive one (no-op
                 # without a tenant); idem-keyed by the incident so a re-run can't double-bill.
-                await metering.record_investigation(result.tokens_used, idem=thread_id)
+                await _meter_and_spend(result.tokens_used, idem=thread_id)
         await _post_to_slack(thread_id, title, result)
     except Exception:  # noqa: BLE001 — best-effort background trigger
         log.exception("triggered investigation failed (incident=%s)", incident.get("id"))

@@ -177,3 +177,21 @@ def test_remediate_requires_high_confidence(client, monkeypatch):
     r = client.post("/remediate", json={
         "action": "restart_deployment", "target": "checkout-svc", "confidence": "low"})
     assert r.status_code == 400
+
+
+def test_global_spend_cap_blocks_new_investigation(client, monkeypatch):
+    monkeypatch.setenv("COPILOT_GLOBAL_TOKEN_CAP", "1000")
+    cfg.get_settings.cache_clear()
+
+    class _Full:
+        async def total(self):
+            return 5000  # already over the cap
+
+        async def record(self, tokens):
+            return 5000
+
+    monkeypatch.setattr(api, "_SPEND", _Full())
+    r = client.post("/chat", json={"thread_id": "t", "message": "why 500s?"})
+    assert r.status_code == 429
+    assert "budget" in r.json()["detail"].lower()
+    monkeypatch.setattr(api, "_SPEND", None)

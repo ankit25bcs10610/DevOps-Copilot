@@ -15,6 +15,9 @@ UI** — those overrides are in-memory only, not persisted across restarts.
 | `COPILOT_API_TOKEN` | — | Bearer token guarding the API (empty = open, dev only) |
 | `COPILOT_MAX_ITERATIONS` | `8` | Max agent steps per turn |
 | `COPILOT_MAX_TOKENS_PER_RUN` | `0` | Per-investigation token budget (0 = unlimited) |
+| `COPILOT_GLOBAL_TOKEN_CAP` | `0` | Fleet-wide token ceiling over a rolling window; new investigations return 429 once crossed (0 = unlimited) |
+| `COPILOT_GLOBAL_SPEND_WINDOW_S` | `86400` | Rolling window for the global cap |
+| `COPILOT_GLOBAL_SPEND_ALERT` | `0.8` | Log a warning past this fraction of the cap |
 | `COPILOT_VERIFY_FIX` | `true` | Verify the proposed fix addresses the root cause (adds the verify node) |
 | `COPILOT_VERIFY_MAX_ATTEMPTS` | `1` | Times an unverified fix bounces back to the agent to revise (0 = annotate only) |
 | `COPILOT_SANDBOX_VERIFY` | `false` | Prove a fix by applying its `patch` to a throwaway repo copy and running a reproducer (executes model patch — off by default) |
