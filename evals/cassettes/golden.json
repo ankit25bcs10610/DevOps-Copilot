@@ -1,0 +1,89 @@
+{
+  "1cd3e965dcec0027d14b484954d3306f7c384b25e99c618c46a6971854b9fa11": {
+    "response": {
+      "data": {
+        "additional_kwargs": {},
+        "content": "",
+        "id": null,
+        "invalid_tool_calls": [],
+        "name": null,
+        "response_metadata": {},
+        "tool_calls": [
+          {
+            "args": {},
+            "id": "call_list_services",
+            "name": "list_services",
+            "type": "tool_call"
+          }
+        ],
+        "type": "ai",
+        "usage_metadata": null
+      },
+      "type": "ai"
+    }
+  },
+  "3347ec470041824e159b4dc2e327945ebcbb37265005dd476273c85d5d09446d": {
+    "response": {
+      "data": {
+        "additional_kwargs": {},
+        "content": "{\"summary\": \"checkout-svc and inventory-svc are the services currently emitting logs.\", \"severity\": \"info\", \"confidence\": \"high\", \"root_cause\": null, \"affected_services\": [\"checkout-svc\", \"inventory-svc\"], \"hypotheses\": [], \"evidence\": [\"list_services returned checkout-svc and inventory-svc\"], \"recommended_actions\": [\"No action needed \u2014 informational query.\"]}",
+        "id": null,
+        "invalid_tool_calls": [],
+        "name": null,
+        "response_metadata": {},
+        "tool_calls": [],
+        "type": "ai",
+        "usage_metadata": null
+      },
+      "type": "ai"
+    }
+  },
+  "5c64586ee6bdd5d8d05883243a594bd367cea4dbb0cbe8b1139994730ac0fa22": {
+    "response": {
+      "data": {
+        "additional_kwargs": {},
+        "content": "DONE",
+        "id": null,
+        "invalid_tool_calls": [],
+        "name": null,
+        "response_metadata": {},
+        "tool_calls": [],
+        "type": "ai",
+        "usage_metadata": null
+      },
+      "type": "ai"
+    }
+  },
+  "6daa32678bd45585a0d5d8e2258c9f1cabf20fb6ac9846b0b351ad66df3fcc6a": {
+    "response": {
+      "data": {
+        "additional_kwargs": {},
+        "content": "1. List the services currently emitting logs.\n2. Summarize which services are active.",
+        "id": null,
+        "invalid_tool_calls": [],
+        "name": null,
+        "response_metadata": {},
+        "tool_calls": [],
+        "type": "ai",
+        "usage_metadata": null
+      },
+      "type": "ai"
+    }
+  },
+  "e62d4484731c73f4e9b2a2d94d2cfaadda8c04f21fdedf5c27e5bd7bb9d5216d": {
+    "response": {
+      "data": {
+        "additional_kwargs": {},
+        "content": "The services currently emitting logs are checkout-svc and inventory-svc.",
+        "id": null,
+        "invalid_tool_calls": [],
+        "name": null,
+        "response_metadata": {},
+        "tool_calls": [],
+        "type": "ai",
+        "usage_metadata": null
+      },
+      "type": "ai"
+    }
+  }
+}
