@@ -155,6 +155,9 @@ class Settings(BaseSettings):
     # — a hard cost kill-switch on top of the iteration cap. 0 = unlimited.
     copilot_max_tokens_per_run: int = 0
     copilot_checkpoint_db: str = "./copilot_checkpoints.sqlite"
+    # Redis URL for the SHARED (cross-replica) rate limiter. Empty = per-process
+    # in-memory limiter (single-instance only). e.g. redis://host:6379/0
+    copilot_redis_url: str = ""
     # Prompt caching (Anthropic): cache the stable system prompt + bound tool
     # schemas so the agent's many loop iterations re-read them at ~0.1x cost
     # instead of re-paying full input price each turn. No-op for other providers.
