@@ -197,6 +197,10 @@ class Settings(BaseSettings):
     # deterministic judge downgrades/abstains when a serious objection stands. Cuts
     # confident-but-wrong RCAs. Two fast-model calls; true (default) | false.
     copilot_adversarial_critique: bool = True
+    # Model routing: triage clearly-informational requests ("which services…?") onto
+    # the cheap fast model in the agent loop, reserving the main reasoning model for
+    # real incident investigation. Biased toward the main model on any doubt.
+    copilot_model_routing: bool = True
 
     @field_validator("copilot_provider")
     @classmethod
