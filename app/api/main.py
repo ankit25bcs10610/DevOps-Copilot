@@ -14,6 +14,7 @@ graph state to SQLite/Postgres, so sessions are reconstructable).
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import hmac
 import json
@@ -324,7 +325,26 @@ async def lifespan(app: FastAPI):
         if get_settings().copilot_tenant_db.startswith(("postgres://", "postgresql://")) is False:
             log.warning("multi-tenant on SQLite is app-level isolated, not RLS-hard-isolated; "
                         "use Postgres + RLS for production tenant isolation")
+    # Proactive SLO-burn poller (opt-in): auto-open investigations before a page.
+    slo_task: asyncio.Task | None = None
+    if get_settings().copilot_slo_poller:
+        from app.mcp.servers.datadog import server as _dd
+        from app.slo_poller import SLOPoller
+
+        poller = SLOPoller(
+            services_fn=_dd.list_services,
+            burn_fn=_dd.compute_burn_rate,
+            trigger_fn=_slo_trigger,
+            interval=get_settings().copilot_slo_poll_interval_s,
+            cooldown=get_settings().copilot_slo_cooldown_s,
+        )
+        slo_task = asyncio.create_task(poller.run())
+        log.info("proactive SLO poller enabled")
     yield
+    if slo_task:
+        slo_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await slo_task
     # Graceful shutdown: the config gate's exclusive writer waits for in-flight
     # turns to drain before tearing sessions down, so we don't kill MCP
     # subprocesses mid-investigation. Bounded so a stuck turn can't hang shutdown.
@@ -1215,6 +1235,18 @@ async def _run_triggered_investigation(incident: dict) -> None:
         await _post_to_slack(thread_id, title, result)
     except Exception:  # noqa: BLE001 — best-effort background trigger
         log.exception("triggered investigation failed (incident=%s)", incident.get("id"))
+
+
+async def _slo_trigger(service: str, burn: dict) -> None:
+    """Adapt an SLO burn alert into the shared triggered-investigation path."""
+    verdict = burn.get("verdict", "burn-rate alert")
+    incident = {
+        "id": f"slo-{service}",
+        "title": f"SLO burn alert: {service} — {verdict}",
+        "service": service,
+    }
+    log.info("SLO poller opening investigation for %s (%s)", service, verdict)
+    await _run_triggered_investigation(incident)
 
 
 async def _resume_triggered(thread_id: str, approved: bool) -> None:

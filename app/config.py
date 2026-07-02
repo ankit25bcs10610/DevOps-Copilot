@@ -201,6 +201,14 @@ class Settings(BaseSettings):
     # the cheap fast model in the agent loop, reserving the main reasoning model for
     # real incident investigation. Biased toward the main model on any doubt.
     copilot_model_routing: bool = True
+    # Proactive SLO poller: periodically evaluate each service's error-budget burn
+    # rate and auto-open an investigation when it's page-worthy — before a human is
+    # paged. Spends tokens autonomously, so OFF by default. true | false (default).
+    copilot_slo_poller: bool = False
+    # How often the poller sweeps services (seconds) and the per-service cooldown
+    # before it will re-open an investigation for a still-burning service.
+    copilot_slo_poll_interval_s: int = 300
+    copilot_slo_cooldown_s: int = 3600
 
     @field_validator("copilot_provider")
     @classmethod
