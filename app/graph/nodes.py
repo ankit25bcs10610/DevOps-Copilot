@@ -10,6 +10,7 @@ import json
 import logging
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.types import interrupt
@@ -20,6 +21,7 @@ from app.config import get_settings
 from app.graph.prompts import (
     AGENT_SYSTEM,
     DEFENDER_SYSTEM,
+    HYPOTHESIS_PROBE_SYSTEM,
     PLANNER_SYSTEM,
     PROSECUTOR_SYSTEM,
     REFLECT_SYSTEM,
@@ -646,6 +648,86 @@ class _RcaSchema(BaseModel):
 
 
 # --------------------------------------------------------------------------- #
+# Parallel multi-hypothesis probe — when the RCA has several competing hypotheses,
+# score each one CONCURRENTLY against the observed evidence (a focused fast-model
+# call per hypothesis, fanned out over threads since .invoke is blocking) and
+# re-rank, so a weakly-supported hypothesis can't win on ordering alone. Merge is
+# pure/testable; the fan-out is gated to replay-off.
+# --------------------------------------------------------------------------- #
+_MAX_PROBE_WORKERS = 4
+
+
+def _parse_probe(text: str) -> dict:
+    """Parse a single hypothesis-probe reply into {support, verdict, rationale}."""
+    data = _extract_json_obj(text)
+    try:
+        support = float(data.get("support", 0) or 0)
+    except (TypeError, ValueError):
+        support = 0.0
+    support = max(0.0, min(1.0, support))
+    verdict = str(data.get("verdict", "")).strip().lower()
+    return {
+        "support": round(support, 3),
+        "verdict": verdict if verdict in _VERDICTS else "inconclusive",
+        "rationale": str(data.get("rationale", "")).strip()[:300],
+    }
+
+
+def _competing_hypotheses(hypotheses: list[dict]) -> list[dict]:
+    """The still-in-contention hypotheses worth probing (not already invalidated)."""
+    return [h for h in hypotheses if h.get("verdict") != "invalidated"]
+
+
+def _merge_probe_scores(hypotheses: list[dict], scores: dict[int, dict]) -> list[dict]:
+    """Attach probe results to hypotheses (by index) and re-rank most-supported
+    first. Pure + stable: unprobed hypotheses keep their order after probed ones."""
+    enriched: list[tuple[int, dict]] = []
+    for i, h in enumerate(hypotheses):
+        h = dict(h)
+        if i in scores:
+            h["probe_support"] = scores[i]["support"]
+            h["probe_verdict"] = scores[i]["verdict"]
+            if scores[i]["rationale"]:
+                h["probe_rationale"] = scores[i]["rationale"]
+        enriched.append((i, h))
+    # Sort: probed hypotheses by support desc; unprobed sink to the bottom keeping
+    # original order (support = -1 sentinel), stable on ties.
+    enriched.sort(key=lambda ih: -ih[1].get("probe_support", -1.0))
+    return [h for _, h in enriched]
+
+
+def _probe_hypotheses(llm, hypotheses: list[dict], digest: str) -> dict:
+    """Concurrently score competing hypotheses against the evidence, then re-rank.
+    Returns {hypotheses, tokens, probed}. No-op (probed=0) when <2 compete."""
+    competing = _competing_hypotheses(hypotheses)
+    if len(competing) < 2:
+        return {"hypotheses": hypotheses, "tokens": 0, "probed": 0}
+    ev = digest or "(none recorded)"
+    targets = competing[:_MAX_PROBE_WORKERS]  # bound the fan-out
+    index_of = {id(h): i for i, h in enumerate(hypotheses)}
+
+    def _probe(h: dict) -> tuple[int, dict, object]:
+        msgs = [
+            SystemMessage(content=HYPOTHESIS_PROBE_SYSTEM),
+            HumanMessage(content=f"Hypothesis:\n{h.get('cause', '')}\n\nEvidence:\n{ev}"),
+        ]
+        resp = llm.invoke(msgs)
+        return index_of[id(h)], _parse_probe(str(resp.content)), resp
+
+    scores: dict[int, dict] = {}
+    tokens = 0
+    try:
+        with ThreadPoolExecutor(max_workers=len(targets)) as pool:
+            for idx, parsed, resp in pool.map(_probe, targets):
+                scores[idx] = parsed
+                tokens += _log_usage("hypothesis_probe", resp)
+    except Exception:  # noqa: BLE001 — probing must never break a finished run
+        log.warning("parallel hypothesis probe failed (non-fatal)", exc_info=True)
+        return {"hypotheses": hypotheses, "tokens": tokens, "probed": 0}
+    return {"hypotheses": _merge_probe_scores(hypotheses, scores), "tokens": tokens, "probed": len(scores)}
+
+
+# --------------------------------------------------------------------------- #
 # Adversarial RCA critique — a Prosecutor tries to refute the root cause; a
 # Defender rebuts using only observed evidence; a deterministic judge downgrades
 # or abstains when a serious objection stands unrebutted. Cuts confident-but-wrong
@@ -841,6 +923,17 @@ def make_report_node():
             except Exception:  # noqa: BLE001 — reporting must never break a finished run
                 log.exception("report synthesis failed; using fallback report")
                 report = _parse_report("", fallback_summary=final_answer)
+        # Parallel multi-hypothesis probe: concurrently score competing hypotheses
+        # against the evidence and re-rank, so the best-supported one leads. Gated to
+        # replay-off and to reports with 2+ still-contending hypotheses.
+        if (
+            settings.copilot_parallel_hypotheses
+            and replay.mode() == "off"
+            and len(_competing_hypotheses(report.get("hypotheses") or [])) >= 2
+        ):
+            probe = _probe_hypotheses(llm, report["hypotheses"], digest)
+            report["hypotheses"] = probe["hypotheses"]
+            tokens += probe["tokens"]
         report = _calibrate_confidence(report)
         report = _verify_grounding(report, digest)  # deterministic critic pass
         # Adversarial critique (LLM): prosecute → defend → judge, then fold the
